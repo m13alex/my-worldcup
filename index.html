@@ -296,6 +296,7 @@ th[onclick]:active{color:var(--acc2);}
 .tl-item.ev-card{border-color:rgba(251,191,36,.25);}
 .brchips{margin-bottom:8px;overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch;}
 .brchips .chip{padding:7px 12px;font-size:13px;}
+.draw-pop{animation:pop .5s cubic-bezier(.2,.8,.2,1);border-color:var(--acc2)!important;}
 </style>
 </head>
 <body>
@@ -1003,6 +1004,7 @@ function render(){
   else if(view.name==='t') a.innerHTML=rTournament();
   else if(view.name==='live') a.innerHTML=rLive();
   else if(view.name==='hall') a.innerHTML=rHall();
+  else if(view.name==='draw') a.innerHTML=rDraw();
   const _sig=view.name+'|'+(view.id||view.tid||'');
   if(_sig!==_renderSig){ _renderSig=_sig; a.style.animation='none'; void a.offsetHeight; a.style.animation=''; }
   if(view.name==='live') afterLive();
@@ -1142,7 +1144,7 @@ function pools(sp){ return [...new Set(DB[sp].map(x=>x.pool))]; }
 function openWizard(){
   W={ name:'Турнир '+S.seq, sport:'football', leagues:pools('football'), count:16, pick:'rating',
       format:'groups', numGroups:4, rounds:1, advance:2, twoLeg:true,
-      mm:{type:'goals',goals:5,minutes:10}, seeding:'rating', manual:null, err:'' };
+      mm:{type:'goals',goals:5,minutes:10}, seeding:'rating', manual:null, manualDraw:false, err:'' };
   go({name:'wizard'});
 }
 function wSet(k,v){ W[k]=v;
@@ -1182,7 +1184,9 @@ function wCreate(){
     matchMode: W.mm.type==='goals'? {type:'goals',goals:W.mm.goals}:{type:'time',minutes:W.mm.minutes},
     seeding:W.seeding };
   const t=createTournament(cfg, DB);
-  S.tournaments.unshift(t); S.seq++; save();
+  S.tournaments.unshift(t); S.seq++;
+  if(W.format==='groups' && W.manualDraw){ t.drawManual=true; t.drawN=0; save(); go({name:'draw', id:t.id}); return; }
+  save();
   toast('Жеребьёвка проведена!');
   openT(t.id);
 }
@@ -1227,7 +1231,8 @@ function rWizard(){
   }
   h+='<div class="sec"><div class="lbl">Жеребьёвка</div><div class="chips">'+
     chip(W.seeding==='rating','С посевом по рейтингу',"wSet('seeding','rating')")+
-    chip(W.seeding==='random','Полностью случайная',"wSet('seeding','random')")+'</div></div>';
+    chip(W.seeding==='random','Полностью случайная',"wSet('seeding','random')")+'</div>'+
+    (W.format==='groups'?'<div class="chips" style="margin-top:8px">'+chip(!!W.manualDraw,'🎬 Ручная по корзинам','W.manualDraw=!W.manualDraw;render()')+'</div>':'')+'</div>';
   h+='<div class="sec"><div class="lbl">Формат матча</div><div class="chips">'+
     chip(W.mm.type==='goals','До N голов',"W.mm.type='goals';render()")+
     chip(W.mm.type==='time','По времени',"W.mm.type='time';render()")+'</div>';
@@ -1322,6 +1327,69 @@ function sortCol(th,type){
   const p=rows[0].parentNode; rows.forEach((r,i)=>{ p.appendChild(r); const c0=r.children[0]; if(c0 && /^\d+$/.test(c0.textContent.trim())) c0.textContent=i+1; });
   const ar=document.createElement('span'); ar.className='sarr'; ar.textContent=dir==='asc'?' ▲':' ▼'; th.appendChild(ar);
 }
+function openTeam(tid,teamId){
+  const t=tById(tid); if(!t) return; const tm=team(t,teamId); if(!tm) return;
+  const ms=t.matches.filter(m=>m.status==='done'&&(m.home===teamId||m.away===teamId));
+  let w=0,dr=0,l=0,gf=0,ga=0;
+  ms.forEach(m=>{ const us=m.home===teamId?m.gh:m.ga, th=m.home===teamId?m.ga:m.gh; gf+=us; ga+=th; if(us>th)w++; else if(us<th)l++; else dr++; });
+  const grp=t.groups.find(g=>g.teams.indexOf(teamId)>=0);
+  let pos=null, pts=null;
+  if(grp){ const tbl=computeTable(grp.teams, t.matches.filter(mm=>mm.stage==='group'&&mm.group===grp.name), t.sport); const idx=tbl.findIndex(x=>x.team===teamId); if(idx>=0){ pos=idx+1; pts=tbl[idx].pts; } }
+  const map={};
+  t.matches.forEach(m=>{ if(m.status!=='done')return;
+    (m.events||[]).forEach(e=>{ if(e.team!==teamId)return; if(!e.type){ if(e.scorer!=null){ (map[e.scorer]=map[e.scorer]||{g:0,a:0,m:0}).g++; } if(e.assist!=null){ (map[e.assist]=map[e.assist]||{g:0,a:0,m:0}).a++; } } });
+    if(m.mvp&&m.mvp.team===teamId){ (map[m.mvp.n]=map[m.mvp.n]||{g:0,a:0,m:0}).m++; } });
+  const rows=Object.keys(map).map(n=>Object.assign({n:+n},map[n])).sort((a,b)=>(b.g+b.a)-(a.g+a.a)||b.g-a.g||b.m-a.m);
+  function stat(v,l){ return '<div><div style="font-size:18px;font-weight:850">'+v+'</div><div class="muted" style="font-size:10px">'+l+'</div></div>'; }
+  let h='<div style="text-align:center;margin-bottom:8px"><div class="profile-ava">'+tLogo(tm)+'</div>'+
+    '<div style="font-size:19px;font-weight:850;margin-top:8px">'+esc(tm.name)+' '+tacticIcon(t,teamId)+'</div>'+
+    '<div class="muted" style="font-size:12px">'+esc(tm.city||'')+(tm.league?' · '+esc(tm.league):'')+'</div></div>';
+  h+='<div class="card" style="padding:10px;display:flex;justify-content:space-around;text-align:center">'+
+    stat(ms.length,'Матчи')+stat(w+'-'+dr+'-'+l,'В-Н-П')+stat(gf+':'+ga,'Голы')+
+    (pts!=null?stat(pts,'Очки'):'')+(pos!=null?stat('#'+pos,'Место'):'')+'</div>';
+  if(rows.length){ h+='<div class="lbl" style="margin:8px 0 6px">Игроки в турнире</div><div class="card" style="padding:4px 10px"><table><tr><th></th><th class="tname">Игрок</th><th>Г</th><th>А</th><th>★</th></tr>';
+    rows.forEach((r,i)=>{ const p=tm.players.find(x=>x.n===r.n)||{n:r.n,name:'№'+r.n};
+      h+='<tr onclick="closeModal();openPlayer(\''+teamId+'\','+r.n+')" style="cursor:pointer"><td class="muted">'+(i+1)+'</td><td class="tname"><span class="row" style="gap:7px">'+ava(tm,p)+'<b>'+esc(p.name)+'</b></span></td><td><b>'+r.g+'</b></td><td>'+r.a+'</td><td>'+(r.m||'')+'</td></tr>'; });
+    h+='</table></div>'; }
+  else h+='<div class="muted" style="text-align:center;padding:10px">Пока нет статистики в этом турнире</div>';
+  h+='<div class="btn wide" style="margin-top:10px" onclick="closeModal()">Закрыть</div>';
+  showModal(h);
+}
+function drawSeq(t){
+  const G=t.groups.length; if(!G) return [];
+  const sorted=t.teams.slice().sort((a,b)=>b.rating-a.rating);
+  const potOf={}; sorted.forEach((tm,i)=>potOf[tm.id]=Math.floor(i/G));
+  const numPots=Math.ceil(t.teams.length/G); const seq=[];
+  for(let p=0;p<numPots;p++) for(let gi=0;gi<G;gi++){ const grp=t.groups[gi]; const tid=grp.teams.find(id=>potOf[id]===p); if(tid) seq.push({teamId:tid,group:grp.name,gi:gi}); }
+  return seq;
+}
+function rDraw(){
+  const t=tById(view.id); if(!t){ return '<div class="empty">Турнир не найден</div>'; }
+  const seq=drawSeq(t); const n=Math.min(t.drawN||0, seq.length);
+  const G=t.groups.length, numPots=Math.ceil(t.teams.length/G);
+  const drawn=new Set(seq.slice(0,n).map(s=>s.teamId));
+  let h='<div class="hdr"><div class="back" onclick="drawAbort(\''+t.id+'\')">‹</div><h1 class="grow" style="margin:0">🎬 Жеребьёвка</h1></div>';
+  h+='<div class="muted" style="text-align:center;margin-bottom:10px">'+n+' / '+seq.length+' команд</div>';
+  h+='<div class="cols" style="flex-wrap:wrap;gap:8px">';
+  t.groups.forEach(g=>{ h+='<div class="col" style="flex:1 1 46%;min-width:46%"><div class="colhead">Группа '+g.name+'</div>';
+    g.teams.forEach(id=>{ if(drawn.has(id)){ const tm=team(t,id); const last=seq[n-1]&&seq[n-1].teamId===id;
+      h+='<div class="pbtn'+(last?' draw-pop':'')+'" onclick="openTeam(\''+t.id+'\',\''+id+'\')">'+tLogo(tm)+'<span class="nm">'+esc(tm.name)+'</span><span class="pos">'+tm.rating+'</span></div>'; } });
+    h+='</div>'; });
+  h+='</div>';
+  const sorted=t.teams.slice().sort((a,b)=>b.rating-a.rating); let anyPot=false;
+  for(let p=0;p<numPots;p++){ const pt=sorted.slice(p*G,(p+1)*G).filter(tm=>!drawn.has(tm.id)); if(!pt.length) continue;
+    if(!anyPot){ h+='<h2>Корзины</h2>'; anyPot=true; }
+    h+='<div class="gname">Корзина '+(p+1)+'</div><div class="chips">'+pt.map(tm=>'<div class="chip">'+esc(tm.name)+'</div>').join('')+'</div>'; }
+  h+='<div style="height:14px"></div>';
+  if(n<seq.length){ h+='<div class="btn primary wide" style="margin-bottom:8px" onclick="drawNext(\''+t.id+'\')">🎲 Посеять следующую</div><div class="btn small wide" onclick="drawAll(\''+t.id+'\')">Посеять всех сразу</div>'; }
+  else h+='<div class="btn primary wide" onclick="drawFinish(\''+t.id+'\')">▶ Начать турнир</div>';
+  h+='<div style="height:20px"></div>';
+  return h;
+}
+function drawNext(tid){ const t=tById(tid); t.drawN=(t.drawN||0)+1; save(); vibr(20); render(); }
+function drawAll(tid){ const t=tById(tid); t.drawN=drawSeq(t).length; save(); render(); }
+function drawFinish(tid){ const t=tById(tid); t.drawManual=false; t.drawN=0; save(); toast('Жеребьёвка проведена!'); openT(tid); }
+function drawAbort(tid){ const t=tById(tid); t.drawManual=false; t.drawN=0; save(); openT(tid); }
 function rTables(t){
   let h='';
   const hk=t.sport==='hockey';
@@ -1334,7 +1402,7 @@ function rTables(t){
     tbl.forEach((r,i)=>{
       const tm=team(t,r.team);
       const adv = t.config.format==='groups' && i<t.config.advance;
-      h+='<tr'+(adv?' class="qual"':'')+'><td class="muted">'+(i+1)+'</td><td class="tname"><span class="row" style="gap:6px">'+tLogo(tm)+'<span'+(adv?' style="font-weight:800"':'')+'>'+esc(tm.name)+(t.elo&&t.elo[r.team]>1.5?' <span style="color:var(--acc);font-size:10px">▲</span>':t.elo&&t.elo[r.team]<-1.5?' <span style="color:var(--red);font-size:10px">▼</span>':'')+'</span></span></td>'+
+      h+='<tr'+(adv?' class="qual"':'')+' onclick="openTeam(\''+t.id+'\',\''+r.team+'\')" style="cursor:pointer"><td class="muted">'+(i+1)+'</td><td class="tname"><span class="row" style="gap:6px">'+tLogo(tm)+'<span'+(adv?' style="font-weight:800"':'')+'>'+esc(tm.name)+(t.elo&&t.elo[r.team]>1.5?' <span style="color:var(--acc);font-size:10px">▲</span>':t.elo&&t.elo[r.team]<-1.5?' <span style="color:var(--red);font-size:10px">▼</span>':'')+'</span></span></td>'+
         '<td>'+r.gp+'</td><td>'+r.w+'</td><td>'+(hk?r.otl:r.d)+'</td><td>'+(r.l-(hk?r.otl:0))+'</td>'+
         '<td>'+r.gf+':'+r.ga+'</td><td><b>'+r.pts+'</b></td></tr>';
     });
@@ -1485,7 +1553,7 @@ function rTie(t,tie){
     let pen='';
     const pwLeg=[...legs].reverse().find(z=>z.status==='done'&&z.penWinner);
     if(pwLeg) pen=pwLeg.penWinner===id?'<span class="tag green" style="margin-left:4px">'+(t.sport==='hockey'?'Б':'пен')+'</span>':'';
-    return '<div class="trow'+(win?' win':lose?' lose':'')+'">'+tLogo(tm)+'<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(tm.name)+'</span>'+pen+
+    return '<div class="trow'+(win?' win':lose?' lose':'')+'" onclick="event.stopPropagation();openTeam(\''+t.id+'\',\''+id+'\')" style="cursor:pointer">'+tLogo(tm)+'<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(tm.name)+'</span>'+pen+
       '<span class="sc">'+(legs.some(m=>m.status!=='scheduled')? scores.map((s,i)=>legs[i].status!=='scheduled'?s:'–').join(' / '):'')+'</span></div>';
   }
   const nextLeg=legs.find(x=>x.status!=='done');
@@ -1544,6 +1612,7 @@ function matchMenu(tid,mid){
   const t=tById(tid); if(!t) return; const m=t.matches.find(x=>x.id===mid); if(!m) return;
   const home=team(t,m.home), away=team(t,m.away);
   let h='<h3 style="display:flex;align-items:center;gap:6px;font-size:15px">'+tLogo(home)+esc(home.name)+' '+tacticIcon(t,m.home)+' — '+tacticIcon(t,m.away)+' '+esc(away.name)+tLogo(away)+'</h3>';
+  h+='<div class="row" style="margin-bottom:8px"><div class="btn small grow" onclick="closeModal();openTeam(\''+tid+'\',\''+m.home+'\')">📋 '+esc(home.name)+'</div><div class="btn small grow" onclick="closeModal();openTeam(\''+tid+'\',\''+m.away+'\')">📋 '+esc(away.name)+'</div></div>';
   if(m.status==='done') h+='<p class="muted" style="margin:0 0 10px">Счёт '+m.gh+':'+m.ga+fmtRes(m)+'</p>';
   if(m.status!=='done'){
     h+='<div class="btn primary wide" style="margin-bottom:8px" onclick="closeModal();openMatch(\''+tid+'\',\''+mid+'\')">▶ Открыть матч</div>';
@@ -1594,7 +1663,7 @@ function rScorers(t){
     const tm=team(t,r.team);
     const p=tm.players.find(p=>p.n===r.n)||{n:r.n,name:'№'+r.n};
     h+='<tr onclick="openPlayer(\''+r.team+'\','+r.n+')" style="cursor:pointer"><td class="muted">'+(i+1)+'</td><td class="tname"><span class="row" style="gap:7px">'+ava(tm,p)+
-      '<span><b>'+esc(p.name)+'</b><div class="muted sclub" style="font-size:10px">'+tLogo(tm)+esc(tm.name)+'</div></span></span></td>'+
+      '<span><b>'+esc(p.name)+'</b><div class="muted sclub" style="font-size:10px;cursor:pointer" onclick="event.stopPropagation();openTeam(\''+t.id+'\',\''+r.team+'\')">'+tLogo(tm)+esc(tm.name)+'</div></span></span></td>'+
       '<td><b>'+r.g+'</b> <span class="muted" style="font-size:9px">('+r.mp+')</span></td><td>'+r.a+'</td><td><b>'+(r.g+r.a)+'</b></td><td>'+(r.m||'')+'</td></tr>';
   });
   return h+'</table></div><div class="muted" style="text-align:center;margin-top:6px">★ — MVP матчей</div>';
