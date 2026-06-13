@@ -251,6 +251,8 @@ input[type=text]:focus{outline:none;border-color:var(--acc2);}
 .xi{position:relative;z-index:1;}
 .xi-p .xi-pos{font-size:8px;font-weight:850;color:var(--acc2);letter-spacing:.5px;margin-bottom:1px;}
 .xi-cap{font-size:9px;font-weight:800;color:var(--tx3);text-transform:uppercase;letter-spacing:1.2px;text-align:center;margin:2px 0;}
+.profile-ava{display:inline-flex;}
+.profile-ava .ava,.profile-ava .avi{width:64px;height:64px;font-size:22px;border-width:2px;}
 .award{display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--line2);}
 .award:last-child{border-bottom:none;}
 .award .ic{font-size:22px;width:28px;text-align:center;flex:none;}
@@ -1207,6 +1209,47 @@ function rTables(t){
   if(t.config.format==='groups' && !t.bracket) h+='<div class="muted" style="text-align:center;margin-top:8px">После всех матчей групп сетка плей-офф соберётся автоматически</div>';
   return h;
 }
+function ensureBestXI(t){
+  if(t.status==='finished' && !t.bestXI){ try{ const d=awardsData(t); t.bestXI=bestEleven(t,d).map(r=>({team:r.team,n:r.n})); save(); }catch(e){} }
+  return t.bestXI||[];
+}
+function careerStats(teamId,n){
+  let g=0,a=0,mMvp=0,tMvp=0,xi=0,titles=0,tours=0;
+  (S.tournaments||[]).forEach(t=>{
+    let played=false;
+    (t.matches||[]).forEach(m=>{
+      if(m.status!=='done') return;
+      if(m.home===teamId||m.away===teamId) played=true;
+      (m.events||[]).forEach(e=>{ if(e.team===teamId && !e.type){ if(e.scorer===n) g++; if(e.assist===n) a++; } });
+      if(m.mvp && m.mvp.team===teamId && m.mvp.n===n) mMvp++;
+    });
+    if(played) tours++;
+    if(t.status==='finished'){
+      const mv=tournamentMVP(t); if(mv && mv.team===teamId && mv.n===n) tMvp++;
+      if(ensureBestXI(t).some(x=>x.team===teamId && x.n===n)) xi++;
+      if(t.champion===teamId) titles++;
+    }
+  });
+  return {g,a,mMvp,tMvp,xi,titles,tours};
+}
+function openPlayer(teamId,n){
+  const tm=TEAM_INDEX[teamId]; if(!tm) return;
+  const p=(tm.players||[]).find(x=>x.n===n)||{n:n,name:'№'+n,pos:''};
+  const c=careerStats(teamId,n);
+  function row(ic,lbl,val,hl){ return '<div class="award"><div class="ic">'+ic+'</div><div class="grow"><div class="ttl">'+lbl+'</div></div><div class="awx"'+(hl?' style="color:var(--gold)"':'')+'>'+val+'</div></div>'; }
+  let h='<div style="text-align:center;margin-bottom:8px"><div class="profile-ava">'+ava(tm,p)+'</div>'+
+    '<div style="font-size:19px;font-weight:850;margin-top:8px">'+esc(p.name)+'</div>'+
+    '<div class="muted" style="display:flex;gap:5px;justify-content:center;align-items:center;margin-top:2px">'+tLogo(tm)+esc(tm.name)+(p.pos?' · '+esc(p.pos):'')+'</div></div>';
+  h+='<div class="lbl" style="margin:6px 0 6px">Карьера · '+c.tours+' турн.</div><div class="card" style="padding:2px 12px">';
+  h+=row('⚽','Голы',c.g);
+  h+=row('🅰️','Передачи',c.a);
+  h+=row('⭐','MVP матчей',c.mMvp);
+  h+=row('👑','MVP турниров',c.tMvp,c.tMvp>0);
+  h+=row('🌟','Символическая сборная',c.xi,c.xi>0);
+  h+=row('🏆','Чемпионств',c.titles,c.titles>0);
+  h+='</div><div class="btn wide" style="margin-top:10px" onclick="closeModal()">Закрыть</div>';
+  showModal(h);
+}
 function awardsData(t){
   const map={};
   const get=(teamId,n)=>{ const k=teamId+'#'+n; if(!map[k]){ const tm=team(t,teamId); const p=(tm&&tm.players.find(x=>x.n===n))||{n,name:'№'+n,pos:'?'}; map[k]={team:teamId,n,name:p.name,pos:p.pos,g:0,a:0,mvp:0,cs:0}; } return map[k]; };
@@ -1255,7 +1298,7 @@ function awardsHtml(t){
   const mvp=tournamentMVP(t); const mvpR=mvp?d.map[mvp.team+'#'+mvp.n]:null;
   const gk=d.list.filter(r=>r.pos==='ВР'&&r.cs>0).sort((a,b)=>b.cs-a.cs)[0];
   function award(ic,ttl,r,extra){ if(!r) return ''; const tm=team(t,r.team); const p=tm.players.find(x=>x.n===r.n)||{n:r.n,name:r.name};
-    return '<div class="award"><div class="ic">'+ic+'</div>'+ava(tm,p)+'<div class="grow"><div class="ttl">'+ttl+'</div><b>'+esc(r.name)+'</b> <span class="muted">· '+esc(tm.name)+'</span></div><div class="awx">'+extra+'</div></div>'; }
+    return '<div class="award" onclick="openPlayer(\''+r.team+'\','+r.n+')" style="cursor:pointer"><div class="ic">'+ic+'</div>'+ava(tm,p)+'<div class="grow"><div class="ttl">'+ttl+'</div><b>'+esc(r.name)+'</b> <span class="muted">· '+esc(tm.name)+'</span></div><div class="awx">'+extra+'</div></div>'; }
   let h='<h2>Награды турнира</h2><div class="card" style="padding:10px">';
   h+=award('👑','Лучший игрок', mvpR, mvpR?(mvpR.g+'+'+mvpR.a):'');
   boots.forEach(function(b,i){ h+=award('⚽', boots.length>1?('Бомбардир · '+(i+1)+'/'+boots.length):'Бомбардир', b, b.g+' гол · '+b.mp+' матч.'); });
@@ -1267,7 +1310,7 @@ function awardsHtml(t){
     h+='<h2>Символическая сборная</h2><div class="card xi-pitch"><div class="xi">';
     lines.forEach(function(L){ const pos=L[0]; const ps=xi.filter(p=>p.posSlot===pos); if(!ps.length) return;
       h+='<div class="xi-cap">'+L[1]+'</div><div class="xi-row">'+ps.map(r=>{ const tm=team(t,r.team); const p=tm.players.find(x=>x.n===r.n)||{n:r.n,name:r.name};
-        return '<div class="xi-p"><div class="xi-pos">'+r.posSlot+'</div>'+ava(tm,p)+'<div class="nm">'+esc(shortName(r.name))+'</div><div class="meta">'+esc(tm.name)+'</div></div>'; }).join('')+'</div>'; });
+        return '<div class="xi-p" onclick="openPlayer(\''+r.team+'\','+r.n+')" style="cursor:pointer"><div class="xi-pos">'+r.posSlot+'</div>'+ava(tm,p)+'<div class="nm">'+esc(shortName(r.name))+'</div><div class="meta">'+esc(tm.name)+'</div></div>'; }).join('')+'</div>'; });
     h+='</div></div>';
   }
   const recs=[];
@@ -1382,7 +1425,7 @@ function rScorers(t){
   list.forEach((r,i)=>{
     const tm=team(t,r.team);
     const p=tm.players.find(p=>p.n===r.n)||{n:r.n,name:'№'+r.n};
-    h+='<tr><td class="muted">'+(i+1)+'</td><td class="tname"><span class="row" style="gap:7px">'+ava(tm,p)+
+    h+='<tr onclick="openPlayer(\''+r.team+'\','+r.n+')" style="cursor:pointer"><td class="muted">'+(i+1)+'</td><td class="tname"><span class="row" style="gap:7px">'+ava(tm,p)+
       '<span><b>'+esc(p.name)+'</b><div class="muted sclub" style="font-size:10px">'+tLogo(tm)+esc(tm.name)+'</div></span></span></td>'+
       '<td><b>'+r.g+'</b> <span class="muted" style="font-size:9px">('+r.mp+')</span></td><td>'+r.a+'</td><td><b>'+(r.g+r.a)+'</b></td><td>'+(r.m||'')+'</td></tr>';
   });
