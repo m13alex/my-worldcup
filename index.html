@@ -279,6 +279,23 @@ th[onclick]:active{color:var(--acc2);}
 .xi-p .ava,.xi-p .avi{width:34px;height:34px;font-size:12px;}
 .xi-p .nm{font-size:10px;font-weight:750;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;}
 .xi-p .meta{font-size:9px;color:var(--tx2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;}
+.tl{display:flex;flex-direction:column;gap:6px;}
+.tl-row{display:grid;grid-template-columns:1fr 32px 1fr;align-items:center;gap:4px;animation:fadeUp .25s ease both;}
+.tl-min{text-align:center;font-weight:850;color:var(--acc2);font-size:11px;font-variant-numeric:tabular-nums;}
+.tl-cell{min-width:0;display:flex;}
+.tl-left{justify-content:flex-end;}
+.tl-right{justify-content:flex-start;}
+.tl-item{display:flex;align-items:center;gap:6px;background:rgba(18,26,38,.7);border:1px solid var(--line2);border-radius:11px;padding:6px 8px;font-size:12.5px;max-width:100%;min-width:0;}
+.tl-item .grow{min-width:0;overflow:hidden;}
+.tl-item b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;max-width:100%;vertical-align:bottom;}
+.tl-item .commentary{font-size:10px;white-space:normal;}
+.tl-item .del{margin-left:4px;font-size:14px;}
+.tl-item .ava,.tl-item .avi{width:22px;height:22px;font-size:9px;}
+.tl-item .ball{font-size:12px;}
+.tl-item .evlogo .tlogo,.tl-item .evlogo .tcolor{width:13px;height:13px;font-size:7px;}
+.tl-item.ev-card{border-color:rgba(251,191,36,.25);}
+.brchips{margin-bottom:8px;overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch;}
+.brchips .chip{padding:7px 12px;font-size:13px;}
 </style>
 </head>
 <body>
@@ -973,6 +990,7 @@ function fallAva(tm,p){
 
 /* ================= router ================= */
 let view={name:'home'};
+let _renderSig='';
 let timerInt=null;
 function go(v){ view=v;
   if(timerInt&&v.name!=='live'){clearInterval(timerInt);timerInt=null;}
@@ -985,7 +1003,8 @@ function render(){
   else if(view.name==='t') a.innerHTML=rTournament();
   else if(view.name==='live') a.innerHTML=rLive();
   else if(view.name==='hall') a.innerHTML=rHall();
-  a.style.animation='none'; void a.offsetHeight; a.style.animation='';
+  const _sig=view.name+'|'+(view.id||view.tid||'');
+  if(_sig!==_renderSig){ _renderSig=_sig; a.style.animation='none'; void a.offsetHeight; a.style.animation=''; }
   if(view.name==='live') afterLive();
 }
 
@@ -1444,10 +1463,14 @@ function awardsHtml(t){
 function rBracket(t){
   if(!t.bracket) return '<div class="empty">Сетка появится после завершения группового этапа</div>';
   const b=t.bracket;
-  let h='<div class="bwrap"><div class="bcols">';
+  let h='';
+  if(b.numRounds>1){ h+='<div class="chips brchips">';
+    for(let r=0;r<b.numRounds;r++){ h+='<div class="chip" style="flex:none" onclick="var el=document.getElementById(\'bcol'+r+'\');if(el)el.scrollIntoView({behavior:\'smooth\',inline:\'center\',block:\'nearest\'})">'+roundName(r,b.numRounds)+'</div>'; }
+    h+='</div>'; }
+  h+='<div class="bwrap"><div class="bcols">';
   for(let r=0;r<b.numRounds;r++){
     const ties=b.ties.filter(x=>x.round===r).sort((x,y)=>x.idx-y.idx);
-    h+='<div class="bcol"><div class="bhead">'+roundName(r,b.numRounds)+'</div>'+ties.map(tie=>rTie(t,tie)).join('')+'</div>';
+    h+='<div class="bcol" id="bcol'+r+'"><div class="bhead">'+roundName(r,b.numRounds)+'</div>'+ties.map(tie=>rTie(t,tie)).join('')+'</div>';
   }
   h+='</div></div>';
   return h;
@@ -1662,9 +1685,7 @@ function matchInfo(tid,mid){
   if(m.penWinner) h+='<div class="muted" style="margin-bottom:8px">'+(t.sport==='hockey'?'Победа по буллитам':'Победа по пенальти')+': '+esc(team(t,m.penWinner).name)+'</div>';
   if(m.mvp) h+='<div style="margin-bottom:8px"><span class="tag gold">MVP</span> <b>'+esc(playerName(t,m.mvp.team,m.mvp.n))+'</b> <span class="muted">('+esc(team(t,m.mvp.team).name)+')</span></div>';
   if(m.events.length){
-    h+='<div class="feed" style="max-height:300px">';
-    m.events.slice().sort((a,b)=>(a.min||0)-(b.min||0)).forEach(e=>{ h+=eventLine(t,m,e,null); });
-    h+='</div>';
+    h+='<div class="feed" style="max-height:340px">'+feedHtml(t,m)+'</div>';
   } else h+='<p class="muted">Голов не было</p>';
   if(m.stats) h+='<h2>Статистика</h2><div class="card">'+statsHtml(t,m)+'</div>';
   if(canReset(t,m)) h+='<div class="btn danger wide" style="margin-top:10px" onclick="resetMatch(\''+tid+'\',\''+mid+'\')">↺ Переиграть матч</div>';
@@ -1792,6 +1813,7 @@ function rLive(){
     h+='<div style="text-align:center" class="muted">до '+mm.goals+' голов · <span id="vmin">'+(m.virtMin||0)+'\'</span></div>';
   }
   h+='</div>';
+  h+='<div class="row" style="margin:10px 0"><div class="btn small grow" onclick="subUI()">🔄 Замена</div><div class="btn small grow" onclick="penaltyUI()">🥅 Пенальти</div><div class="btn small grow" onclick="addCardUI()">🟨🟥 Карта</div></div>';
   h+='<div class="feed" id="feed">'+feedHtml(t,m)+'</div>';
   h+='<div class="cols"><div class="col">'+
       '<div class="colhead">'+tLogo(home)+esc(home.name)+'</div>'+
@@ -1801,8 +1823,7 @@ function rLive(){
       '<div class="colhead">'+tLogo(away)+esc(away.name)+'</div>'+
       '<div class="pbtn" style="justify-content:center;color:var(--tx2)" onclick="goal(\''+m.away+'\',null)">+ гол без автора</div>'+
       playersCol(t,m.away)+'</div></div>';
-  h+='<div class="row" style="margin-top:10px"><div class="btn small grow" onclick="subUI()">🔄 Замена</div><div class="btn small grow" onclick="penaltyUI()">🥅 Пенальти</div><div class="btn small grow" onclick="addCardUI()">🟨🟥 Карта</div></div>';
-  h+='<div style="height:10px"></div><div class="btn primary wide" onclick="tryFinish()">Завершить матч</div><div style="height:20px"></div>';
+  h+='<div style="height:6px"></div><div class="btn primary wide" onclick="tryFinish()">Завершить матч</div><div style="height:20px"></div>';
   return h;
 }
 function playersCol(t,teamId){
@@ -1855,10 +1876,28 @@ function eventLine(t,m,e,delIdx){
     '<span class="grow">'+lg+'<b>'+esc(p?p.name:'Гол')+'</b>'+(e.pen?' <span class="muted">(пен.)</span>':'')+(e.pp?' <span class="muted">(бол.)</span>':'')+(e.en?' <span class="muted">(п.в.)</span>':'')+(e.assist!=null?' <span class="muted">('+esc(playerName(t,e.team,e.assist))+')</span>':'')+
     (e.scorer!=null?'<div class="commentary">'+esc(commentaryFor(e))+'</div>':'')+'</span>'+del+'</div>';
 }
+function eventLineInner(t,m,e){
+  const tm=team(t,e.team);
+  const lg='<span class="evlogo">'+tLogo(tm)+'</span>';
+  if(e.type==='yc'||e.type==='rc'){ const card=e.type==='rc'?'🟥':'🟨', lab=e.type==='rc'?'удаление':'предупр.';
+    return '<span class="cardbox">'+card+'</span><span class="grow">'+lg+'<b>'+esc(playerName(t,e.team,e.pl))+'</b> <span class="muted">'+lab+'</span></span>'; }
+  if(e.type==='chance'){ const c=CHANCE_KINDS[e.kind||0]; const ic=e.pen?'🥅':c.i, txt=e.pen?('пен. '+(e.kind===1?'— сейв':'— мимо')):c.t;
+    return '<span class="ball">'+ic+'</span><span class="grow muted">'+lg+'<b style="color:var(--tx2)">'+esc(playerName(t,e.team,e.pl))+'</b> '+txt+'</span>'; }
+  if(e.type==='sub'){ return '<span class="ball">🔄</span><span class="grow">'+lg+'<b>'+esc(playerName(t,e.team,e.on))+'</b> <span class="muted">↔ '+esc(playerName(t,e.team,e.off))+'</span></span>'; }
+  if(e.type==='inj'){ return '<span class="ball">🚑</span><span class="grow muted">'+lg+'<b style="color:var(--tx2)">'+esc(playerName(t,e.team,e.pl))+'</b> травма</span>'; }
+  const p=e.scorer!=null? tm.players.find(x=>x.n===e.scorer):null; const avatar=p?ava(tm,p):tLogo(tm);
+  return avatar+'<span class="ball">'+(t.sport==='hockey'?'🏒':'⚽')+'</span><span class="grow">'+lg+'<b>'+esc(p?p.name:'Гол')+'</b>'+(e.pen?' <span class="muted">(пен.)</span>':'')+(e.pp?' <span class="muted">(бол.)</span>':'')+(e.en?' <span class="muted">(п.в.)</span>':'')+(e.assist!=null?' <span class="muted">('+esc(playerName(t,e.team,e.assist))+')</span>':'')+(e.scorer!=null?'<div class="commentary">'+esc(commentaryFor(e))+'</div>':'')+'</span>';
+}
 function feedHtml(t,m){
   if(!m.events.length) return '<div class="muted" style="text-align:center;padding:4px">События появятся здесь</div>';
   const canDel=m.status!=='done';
-  return m.events.map((e,idx)=>({e,idx})).reverse().map(o=>eventLine(t,m,o.e,canDel?o.idx:null)).join('');
+  const rows=m.events.map((e,idx)=>({e,idx})).sort((a,b)=>(a.e.min||0)-(b.e.min||0));
+  return '<div class="tl">'+rows.map(function(o){ const e=o.e; const side=e.team===m.home?'h':'a';
+    const mn=(e.min!=null?e.min+"'":'')+(e.ot?'+':'');
+    const del=canDel?'<span class="del" onclick="delEvent('+o.idx+')">✕</span>':'';
+    const item='<div class="tl-item ev-'+(e.type||'goal')+'">'+eventLineInner(t,m,e)+del+'</div>';
+    return '<div class="tl-row"><div class="tl-cell tl-left">'+(side==='h'?item:'')+'</div><div class="tl-min">'+mn+'</div><div class="tl-cell tl-right">'+(side==='a'?item:'')+'</div></div>';
+  }).join('')+'</div>';
 }
 function afterLive(){
   reqWake();
