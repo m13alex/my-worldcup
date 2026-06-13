@@ -736,10 +736,12 @@ function simulateMatch(t, match, fromCurrent){
   const _lu=ensureLineup(t,match);
   const susH=new Set(home.players.map(p=>p.n).filter(n=>_lu.home.xi.indexOf(n)<0));
   const susA=new Set(away.players.map(p=>p.n).filter(n=>_lu.away.xi.indexOf(n)<0));
-  let addH=0, addA=0, redH=null, redA=null, redHpl=null, redApl=null, ehM=1, eaM=1;
+  let addH=0, addA=0, redH=null, redA=null, redHpl=null, redApl=null, injH=null, injHpl=null, injA=null, injApl=null, ehM=1, eaM=1;
   if(mm.type==='time' && !fromCurrent){
     if(Math.random()<0.07){ redH=startMin+1+rnd(Math.max(1,V-startMin)); redHpl=pickCardPlayer(home,susH); const f=Math.max(0,(V-redH)/V); ehM*=(1-0.45*f); eaM*=(1+0.30*f); }
     if(Math.random()<0.07){ redA=startMin+1+rnd(Math.max(1,V-startMin)); redApl=pickCardPlayer(away,susA); const f=Math.max(0,(V-redA)/V); eaM*=(1-0.45*f); ehM*=(1+0.30*f); }
+    if(Math.random()<0.06){ injH=startMin+1+rnd(Math.max(1,V-startMin)); injHpl=pickCardPlayer(home,susH); }
+    if(Math.random()<0.06){ injA=startMin+1+rnd(Math.max(1,V-startMin)); injApl=pickCardPlayer(away,susA); }
   }
   if(mm.type==='goals'){
     let gh=gh0, ga=ga0; const N=mm.goals;
@@ -752,7 +754,7 @@ function simulateMatch(t, match, fromCurrent){
   const Vend=matchVend(t,match);
   const mins=sampleMinutes(addH+addA, startMin+1, Vend);
   const sides=shuffle([...Array(addH).fill('h'),...Array(addA).fill('a')]);
-  sides.forEach((s,i)=>{ const mn=mins[i]; const ex=new Set(s==='h'?susH:susA); if(s==='h'&&redHpl!=null&&mn>=redH) ex.add(redHpl); if(s==='a'&&redApl!=null&&mn>=redA) ex.add(redApl); match.events.push(mkEvent(t, s==='h'?home:away, mn, false, ex)); });
+  sides.forEach((s,i)=>{ const mn=mins[i]; const ex=new Set(s==='h'?susH:susA); if(s==='h'&&redHpl!=null&&mn>=redH) ex.add(redHpl); if(s==='a'&&redApl!=null&&mn>=redA) ex.add(redApl); if(s==='h'&&injHpl!=null&&mn>=injH) ex.add(injHpl); if(s==='a'&&injApl!=null&&mn>=injA) ex.add(injApl); match.events.push(mkEvent(t, s==='h'?home:away, mn, false, ex)); });
   if(mm.type==='time'){
     if(redH!=null) match.events.push({team:home.id,type:'rc',pl:redHpl,min:Math.min(redH,Vend)});
     if(redA!=null) match.events.push({team:away.id,type:'rc',pl:redApl,min:Math.min(redA,Vend)});
@@ -765,6 +767,8 @@ function simulateMatch(t, match, fromCurrent){
       const cgh=gh0+addH, cga=ga0+addA;
       if(Math.abs(cgh-cga)===1 && Math.random()<0.3){ const lead=cgh>cga?home:away; const ev=mkEvent(t,lead,Math.min(Vend,V-1+rnd(2)),false,lead===home?susH:susA); ev.en=true; match.events.push(ev); if(lead===home)addH++; else addA++; }
     }
+    if(injHpl!=null) match.events.push({team:home.id,type:'inj',pl:injHpl,min:Math.min(injH,Vend)});
+    if(injApl!=null) match.events.push({team:away.id,type:'inj',pl:injApl,min:Math.min(injA,Vend)});
   }
   match.gh=gh0+addH; match.ga=ga0+addA;
   match.result='REG'; match.virtMin=V; match.timerRunning=false; match.timerStartedAt=null;
@@ -1666,7 +1670,7 @@ function resetMatch(tid,mid){
       tie.matches.forEach(id=>{ const z=t.matches.find(q=>q.id===id); if(z&&z.id!==m.id&&z.penWinner){ z.penWinner=null; if(z.result==='PEN'||z.result==='SO') z.result='REG'; } });
     }
   }
-  Object.assign(m,{status:'scheduled',gh:0,ga:0,events:[],result:null,penWinner:null,timerElapsed:0,timerRunning:false,timerStartedAt:null,otPending:false,mvp:null,virtMin:0,lineup:null,stats:null,penScore:null});
+  Object.assign(m,{status:'scheduled',gh:0,ga:0,events:[],result:null,penWinner:null,timerElapsed:0,timerRunning:false,timerStartedAt:null,otPending:false,mvp:null,virtMin:0,lineup:null,stats:null,penScore:null,subsUsed:null});
   save(); closeModal(); render(); toast('Матч сброшен');
 }
 function confetti(){
@@ -1755,7 +1759,7 @@ function rLive(){
       '<div class="colhead">'+tLogo(away)+esc(away.name)+'</div>'+
       '<div class="pbtn" style="justify-content:center;color:var(--tx2)" onclick="goal(\''+m.away+'\',null)">+ гол без автора</div>'+
       playersCol(t,m.away)+'</div></div>';
-  h+='<div class="row" style="margin-top:10px"><div class="btn small grow" onclick="penaltyUI()">🥅 Пенальти</div><div class="btn small grow" onclick="addCardUI()">🟨🟥 Карточка</div></div>';
+  h+='<div class="row" style="margin-top:10px"><div class="btn small grow" onclick="subUI()">🔄 Замена</div><div class="btn small grow" onclick="penaltyUI()">🥅 Пенальти</div><div class="btn small grow" onclick="addCardUI()">🟨🟥 Карта</div></div>';
   h+='<div style="height:10px"></div><div class="btn primary wide" onclick="tryFinish()">Завершить матч</div><div style="height:20px"></div>';
   return h;
 }
@@ -1796,6 +1800,12 @@ function eventLine(t,m,e,delIdx){
     const ic=e.pen?'🥅':c.i, txt=e.pen?('пенальти '+(e.kind===1?'— сейв вратаря':'— мимо')):c.t;
     return '<div class="fitem ev-chance">'+min+'<span class="ball">'+ic+'</span>'+
       '<span class="grow muted">'+lg+'<b style="color:var(--tx2)">'+esc(playerName(t,e.team,e.pl))+'</b> '+txt+'</span>'+del+'</div>';
+  }
+  if(e.type==='sub'){
+    return '<div class="fitem ev-sub">'+min+'<span class="ball">🔄</span><span class="grow">'+lg+'<b>'+esc(playerName(t,e.team,e.on))+'</b> <span class="muted">↔ '+esc(playerName(t,e.team,e.off))+'</span></span>'+del+'</div>';
+  }
+  if(e.type==='inj'){
+    return '<div class="fitem ev-chance">'+min+'<span class="ball">🚑</span><span class="grow muted">'+lg+'<b style="color:var(--tx2)">'+esc(playerName(t,e.team,e.pl))+'</b> травма</span>'+del+'</div>';
   }
   const p=e.scorer!=null? tm.players.find(x=>x.n===e.scorer):null;
   const avatar=p? ava(tm,p): tLogo(tm);
@@ -1917,6 +1927,51 @@ function refreshLiveScore(popId){
   if(popId){ const el=document.getElementById(popId); if(el){ el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); } }
   const f=document.getElementById('feed'); if(f) f.innerHTML=feedHtml(lvT(),m);
   if(lvT().config.matchMode.type==='time'){ updTimer(); } else { const vm=document.getElementById('vmin'); if(vm) vm.textContent=curMinute()+'\''; }
+}
+let SUB=null;
+function subUI(){
+  const t=lvT(), m=lvM(); if(m.status==='done'){ toast('Матч завершён'); return; }
+  const home=team(t,m.home), away=team(t,m.away);
+  showModal('<h3>🔄 Замена</h3><p class="muted" style="margin:2px 0 10px">Какая команда?</p>'+
+    '<div class="row"><div class="btn grow" onclick="subTeam(\''+m.home+'\')">'+tLogo(home)+' '+esc(home.name)+'</div>'+
+    '<div class="btn grow" onclick="subTeam(\''+m.away+'\')">'+tLogo(away)+' '+esc(away.name)+'</div></div>'+
+    '<div class="btn wide" style="margin-top:8px" onclick="closeModal()">Отмена</div>');
+}
+function subTeam(teamId){
+  const t=lvT(), m=lvM(); ensureLineup(t,m);
+  const max=t.sport==='hockey'?6:5, used=(m.subsUsed&&m.subsUsed[teamId])||0;
+  if(used>=max){ toast('Лимит замен ('+max+')'); return; }
+  const tm=team(t,teamId), side=teamId===m.home?m.lineup.home:m.lineup.away;
+  const order={'ВР':0,'ЗЩ':1,'ПЗ':2,'НП':3};
+  const xi=side.xi.map(n=>tm.players.find(p=>p.n===n)).filter(Boolean).sort((a,b)=>(order[a.pos]??4)-(order[b.pos]??4)||a.n-b.n);
+  let h='<h3>Кто уходит? <span class="muted" style="font-size:12px">'+used+'/'+max+'</span></h3><div class="pgrid">'+
+    xi.map(p=>'<button class="pbtn" onclick="subOff(\''+teamId+'\','+p.n+')">'+ava(tm,p)+'<span class="num">'+p.n+'</span><span class="nm">'+esc(shortName(p.name))+'</span><span class="pos">'+p.pos+'</span></button>').join('')+
+    '</div><div class="btn wide" style="margin-top:8px" onclick="subUI()">‹ Назад</div>';
+  showModal(h);
+}
+function subOff(teamId,offN){
+  const t=lvT(), m=lvM(), tm=team(t,teamId), side=teamId===m.home?m.lineup.home:m.lineup.away;
+  if(!side.bench.length){ toast('Скамейка пуста'); return; }
+  SUB={teamId,off:offN};
+  const order={'ВР':0,'ЗЩ':1,'ПЗ':2,'НП':3};
+  const bench=side.bench.map(n=>tm.players.find(p=>p.n===n)).filter(Boolean).sort((a,b)=>(order[a.pos]??4)-(order[b.pos]??4)||a.n-b.n);
+  let h='<h3>Кто выходит вместо '+esc(playerName(t,teamId,offN))+'?</h3><div class="pgrid">'+
+    bench.map(p=>'<button class="pbtn" onclick="subDo('+p.n+')">'+ava(tm,p)+'<span class="num">'+p.n+'</span><span class="nm">'+esc(shortName(p.name))+'</span><span class="pos">'+p.pos+'</span></button>').join('')+
+    '</div><div class="btn wide" style="margin-top:8px" onclick="subTeam(\''+teamId+'\')">‹ Назад</div>';
+  showModal(h);
+}
+function subDo(onN){
+  const t=lvT(), m=lvM(); if(!SUB) return; const teamId=SUB.teamId, offN=SUB.off;
+  const max=t.sport==='hockey'?6:5; if(((m.subsUsed&&m.subsUsed[teamId])||0)>=max){ toast('Лимит замен ('+max+')'); SUB=null; closeModal(); return; }
+  const side=teamId===m.home?m.lineup.home:m.lineup.away;
+  const oi=side.xi.indexOf(offN); if(oi<0){ SUB=null; closeModal(); return; }
+  side.xi[oi]=onN; side.bench=side.bench.filter(n=>n!==onN); side.bench.push(offN);
+  m.subsUsed=m.subsUsed||{}; m.subsUsed[teamId]=(m.subsUsed[teamId]||0)+1;
+  const min=t.config.matchMode.type==='time'?curMinute():(m.virtMin||0);
+  m.events.push({team:teamId,type:'sub',on:onN,off:offN,min:min});
+  save(); closeModal(); SUB=null;
+  toast('🔄 '+playerName(t,teamId,onN)+' ← '+playerName(t,teamId,offN)); vibr(25);
+  render();
 }
 let cardColor='yc';
 function addCardUI(){
