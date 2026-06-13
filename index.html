@@ -252,6 +252,7 @@ input[type=text]:focus{outline:none;border-color:var(--acc2);}
 .xi-p .xi-pos{font-size:8px;font-weight:850;color:var(--acc2);letter-spacing:.5px;margin-bottom:1px;}
 .xi-cap{font-size:9px;font-weight:800;color:var(--tx3);text-transform:uppercase;letter-spacing:1.2px;text-align:center;margin:2px 0;}
 .profile-ava{display:inline-flex;}
+.mfav{margin-left:auto;color:var(--gold);font-size:15px;cursor:pointer;padding:0 2px;}
 .profile-ava .ava,.profile-ava .avi{width:64px;height:64px;font-size:22px;border-width:2px;}
 .award{display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--line2);}
 .award:last-child{border-bottom:none;}
@@ -819,6 +820,7 @@ const TEAM_INDEX={};
 ['football','hockey'].forEach(sp=>DB[sp].forEach(tm=>TEAM_INDEX[tm.id]=tm));
 let logoCache={};
 try{ logoCache=JSON.parse(localStorage.getItem('mwc_logos')||'{}'); }catch(e){ logoCache={}; }
+let favTeams; try{ favTeams=new Set(JSON.parse(localStorage.getItem('mwc_fav')||'[]')); }catch(e){ favTeams=new Set(); }
 function logoSrc(id){ return logoCache[id] || LOGOS[id] || null; }
 function fallbackCircle(tm, cls){
   return '<span class="'+(cls||'tcolor')+'" style="background:linear-gradient(135deg,'+tm.colors[0]+' 50%,'+tm.colors[1]+' 50%)">'+esc(tm.name[0]||'')+'</span>';
@@ -1133,16 +1135,23 @@ function rWizard(){
   return h;
 }
 function wManual(){
-  const pool=wPool().slice().sort((a,b)=>b.rating-a.rating);
+  const pool=wPool().slice().sort((a,b)=> ((favTeams.has(b.id)?1:0)-(favTeams.has(a.id)?1:0)) || b.rating-a.rating);
   const cur=new Set(W.manual||wTeams());
-  let h='<h3>Выбери команды <span id="mcnt" class="tag">'+cur.size+' / '+W.count+'</span></h3><div class="pgrid">';
+  let h='<h3>Выбери команды <span id="mcnt" class="tag">'+cur.size+' / '+W.count+'</span></h3>'+
+    '<input type="text" id="mfilter" placeholder="🔎 Поиск команды…" oninput="mFilter(this.value)" style="margin-bottom:10px">'+
+    '<div class="pgrid" id="mgrid">';
   pool.forEach(tm=>{
-    h+='<div class="pbtn" data-id="'+tm.id+'" onclick="mTog(this)" style="'+(cur.has(tm.id)?'border-color:var(--acc2);background:var(--bg3)':'')+'">'+
-      tLogo(tm)+'<span class="nm">'+esc(tm.name)+'</span><span class="pos">'+tm.rating+'</span></div>';
+    const fav=favTeams.has(tm.id);
+    h+='<div class="pbtn" data-id="'+tm.id+'" data-name="'+esc(tm.name.toLowerCase())+'" onclick="mTog(this)" style="'+(cur.has(tm.id)?'border-color:var(--acc2);background:var(--bg3)':'')+'">'+
+      tLogo(tm)+'<span class="nm">'+esc(tm.name)+'</span>'+
+      '<span class="mfav" onclick="event.stopPropagation();mFav(\''+tm.id+'\',this)">'+(fav?'★':'☆')+'</span>'+
+      '<span class="pos">'+tm.rating+'</span></div>';
   });
   h+='</div><div style="height:12px"></div><div class="btn primary wide" onclick="mDone()">Готово</div>';
   const o=showModal(h); o.dataset.sel=JSON.stringify([...cur]);
 }
+function mFilter(q){ q=(q||'').toLowerCase().trim(); document.querySelectorAll('#mgrid .pbtn').forEach(el=>{ el.style.display = el.dataset.name.indexOf(q)>=0?'':'none'; }); }
+function mFav(id,el){ if(favTeams.has(id)) favTeams.delete(id); else favTeams.add(id); try{ localStorage.setItem('mwc_fav', JSON.stringify([...favTeams])); }catch(e){} if(el) el.textContent=favTeams.has(id)?'★':'☆'; }
 function mTog(el){
   const o=document.querySelector('.overlay'); let sel=JSON.parse(o.dataset.sel);
   const id=el.dataset.id;
@@ -1270,21 +1279,27 @@ function awardsData(t){
     const diff=Math.abs(m.gh-m.ga);
     if(diff>0 && (!biggest||diff>biggest.diff)) biggest={diff,m};
   });
-  const gp={}; t.teams.forEach(tm=>{ gp[tm.id]=t.matches.filter(m=>m.status==='done'&&(m.home===tm.id||m.away===tm.id)).length; });
+  const gp={}, gconc={}; t.teams.forEach(tm=>{ gp[tm.id]=0; gconc[tm.id]=0; });
+  t.matches.forEach(m=>{ if(m.status!=='done') return;
+    if(gp[m.home]!=null){ gp[m.home]++; gconc[m.home]+=m.ga; }
+    if(gp[m.away]!=null){ gp[m.away]++; gconc[m.away]+=m.gh; } });
+  const gaAvg={}; Object.keys(gp).forEach(id=>{ gaAvg[id]=gp[id]? gconc[id]/gp[id] : 0; });
   Object.values(map).forEach(r=>{ r.score=r.g*2+r.a+r.mvp*3+r.cs*1.5; r.mp=gp[r.team]||0; });
-  return {map, list:Object.values(map), hatTricks, biggest, gp};
+  return {map, list:Object.values(map), hatTricks, biggest, gp, gaAvg};
 }
 function bestEleven(t,d){
   const form = t.sport==='hockey'? {'ВР':1,'ЗЩ':2,'НП':3} : {'ВР':1,'ЗЩ':4,'ПЗ':3,'НП':3};
-  // полный пул всех игроков всех команд, очки из статистики (0 если нет)
+  const ga=d.gaAvg||{};
+  // полный пул всех игроков всех команд; защита/вратарь учитывают пропущенные командой
   const pool=[];
   t.teams.forEach(tm=>tm.players.forEach(p=>{ const r=d.map[tm.id+'#'+p.n];
-    pool.push({team:tm.id,n:p.n,name:p.name,pos:p.pos, g:r?r.g:0,a:r?r.a:0,mvp:r?r.mvp:0,cs:r?r.cs:0,score:r?r.score:0}); }));
+    pool.push({team:tm.id,n:p.n,name:p.name,pos:p.pos, g:r?r.g:0,a:r?r.a:0,mvp:r?r.mvp:0,cs:r?r.cs:0,score:r?r.score:0, ga:ga[tm.id]||0}); }));
   const byPos={}; pool.forEach(r=>{ (byPos[r.pos]=byPos[r.pos]||[]).push(r); });
   const out=[];
   Object.keys(form).forEach(function(pos){ const cnt=form[pos];
     const arr=(byPos[pos]||[]).slice();
-    if(pos==='ВР') arr.sort((a,b)=>b.cs-a.cs||b.score-a.score);
+    if(pos==='ВР') arr.sort((a,b)=> (b.cs - b.ga*1.5 + b.score*0.3) - (a.cs - a.ga*1.5 + a.score*0.3));
+    else if(pos==='ЗЩ') arr.sort((a,b)=> (b.score + b.cs*1.5 - b.ga*1.4) - (a.score + a.cs*1.5 - a.ga*1.4));
     else arr.sort((a,b)=>b.score-a.score||b.g-a.g);
     arr.slice(0,cnt).forEach(r=>out.push(Object.assign({posSlot:pos},r)));
   });
