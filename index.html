@@ -148,6 +148,9 @@ tr.qual td:first-child::before{content:"";position:absolute;left:0;top:-1px;bott
 .pbtn .num{font-weight:850;font-size:12px;color:var(--tx2);min-width:20px;text-align:center;flex:none;}
 .pbtn .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;}
 .pbtn .pos{font-size:9px;color:var(--tx3);flex:none;font-weight:800;}
+.lineup-sec{font-size:10px;font-weight:850;color:var(--acc2);text-transform:uppercase;letter-spacing:.6px;padding:7px 2px 5px;text-align:center;}
+.lineup-sec.sub{color:var(--tx3);border-top:1px dashed var(--line2);margin-top:6px;}
+.pbtn.bench{opacity:.62;cursor:default;}
 .feed{max-height:150px;overflow-y:auto;margin:8px 0;}
 .fitem{display:flex;align-items:center;gap:8px;font-size:13.5px;padding:6px 10px;border-radius:11px;background:rgba(18,26,38,.7);
   border:1px solid var(--line2);margin-bottom:5px;animation:fadeUp .25s ease both;}
@@ -617,6 +620,25 @@ function suspendedFor(t, teamId, matchId){
   }
   return new Set(pending);
 }
+function ensureLineup(t,m){
+  if(m.lineup) return m.lineup;
+  const form = t.sport==='hockey'? {'ВР':1,'ЗЩ':2,'НП':3} : {'ВР':1,'ЗЩ':4,'ПЗ':3,'НП':3};
+  const need=Object.keys(form).reduce((s,k)=>s+form[k],0);
+  function build(teamId){
+    const tm=team(t,teamId); const sus=suspendedFor(t,teamId,m.id);
+    const avail=tm.players.filter(p=>!sus.has(p.n));
+    const xi=[]; const used=new Set();
+    Object.keys(form).forEach(pos=>{ const cnt=form[pos];
+      avail.filter(p=>p.pos===pos && !used.has(p.n)).sort((a,b)=>skillOf(b)-skillOf(a)).slice(0,cnt)
+        .forEach(p=>{ xi.push(p.n); used.add(p.n); }); });
+    if(xi.length<need){ avail.filter(p=>!used.has(p.n)).sort((a,b)=>skillOf(b)-skillOf(a))
+        .forEach(p=>{ if(xi.length<need){ xi.push(p.n); used.add(p.n); } }); }
+    const bench=tm.players.filter(p=>!used.has(p.n) && !sus.has(p.n)).map(p=>p.n);
+    return {xi, bench};
+  }
+  m.lineup={ home: build(m.home), away: build(m.away) };
+  return m.lineup;
+}
 function pickScorer(t, team, exclude){
   const W = t.sport==='hockey'
     ? {'НП':9,'ЗЩ':1.8,'ВР':0.01}
@@ -711,7 +733,9 @@ function simulateMatch(t, match, fromCurrent){
     else startMin=Math.min(V-1, match.virtMin||0);
     match.events.forEach(e=>{ if(e.min!=null && !e.ot && e.min>startMin) startMin=Math.min(e.min,V-1); });
   }
-  const susH=suspendedFor(t,home.id,match.id), susA=suspendedFor(t,away.id,match.id);
+  const _lu=ensureLineup(t,match);
+  const susH=new Set(home.players.map(p=>p.n).filter(n=>_lu.home.xi.indexOf(n)<0));
+  const susA=new Set(away.players.map(p=>p.n).filter(n=>_lu.away.xi.indexOf(n)<0));
   let addH=0, addA=0, redH=null, redA=null, redHpl=null, redApl=null, ehM=1, eaM=1;
   if(mm.type==='time' && !fromCurrent){
     if(Math.random()<0.07){ redH=startMin+1+rnd(Math.max(1,V-startMin)); redHpl=pickCardPlayer(home,susH); const f=Math.max(0,(V-redH)/V); ehM*=(1-0.45*f); eaM*=(1+0.30*f); }
@@ -1642,7 +1666,7 @@ function resetMatch(tid,mid){
       tie.matches.forEach(id=>{ const z=t.matches.find(q=>q.id===id); if(z&&z.id!==m.id&&z.penWinner){ z.penWinner=null; if(z.result==='PEN'||z.result==='SO') z.result='REG'; } });
     }
   }
-  Object.assign(m,{status:'scheduled',gh:0,ga:0,events:[],result:null,penWinner:null,timerElapsed:0,timerRunning:false,timerStartedAt:null,otPending:false,mvp:null,virtMin:0});
+  Object.assign(m,{status:'scheduled',gh:0,ga:0,events:[],result:null,penWinner:null,timerElapsed:0,timerRunning:false,timerStartedAt:null,otPending:false,mvp:null,virtMin:0,lineup:null,stats:null,penScore:null});
   save(); closeModal(); render(); toast('Матч сброшен');
 }
 function confetti(){
@@ -1682,6 +1706,7 @@ function openMatch(tid,mid){
     m.virtMin=m.virtMin||0;
     save();
   }
+  ensureLineup(t,m);
   go({name:'live', tid, mid});
 }
 function lvT(){ return tById(view.tid); }
@@ -1736,13 +1761,22 @@ function rLive(){
 }
 function playersCol(t,teamId){
   const tm=team(t,teamId); const m=lvM();
-  const off=m?m.events.filter(e=>e.type==='rc'&&e.team===teamId).map(e=>e.pl):[];
-  const sus=m?[...suspendedFor(t,teamId,m.id)]:[];
-  const order={'НП':0,'ПЗ':1,'ЗЩ':2,'ВР':3};
-  const ps=tm.players.slice().sort((a,b)=>(order[a.pos]??4)-(order[b.pos]??4)||a.n-b.n);
-  return ps.map(p=>{ const so=off.includes(p.n), su=!so&&sus.includes(p.n), dis=so||su;
-    return '<button class="pbtn'+(dis?' off':'')+'" '+(dis?'':'onclick="goal(\''+teamId+'\','+p.n+')"')+'>'+
-    ava(tm,p)+'<span class="num">'+p.n+'</span><span class="nm">'+esc(shortName(p.name))+(so?' 🟥':su?' 🚫':'')+'</span><span class="pos">'+p.pos+'</span></button>'; }).join('');
+  const lu=ensureLineup(t,m);
+  const side = teamId===m.home? lu.home : lu.away;
+  const off=m.events.filter(e=>e.type==='rc'&&e.team===teamId).map(e=>e.pl);
+  const order={'ВР':0,'ЗЩ':1,'ПЗ':2,'НП':3};
+  const byNum=n=>tm.players.find(p=>p.n===n)||{n:n,name:'№'+n,pos:''};
+  const xi=side.xi.map(byNum).sort((a,b)=>(order[a.pos]??4)-(order[b.pos]??4)||a.n-b.n);
+  let h='<div class="lineup-sec">'+(t.sport==='hockey'?'🏒':'⚽')+' На поле · '+side.xi.length+'</div>';
+  h+=xi.map(p=>{ const so=off.includes(p.n);
+    return '<button class="pbtn'+(so?' off':'')+'" '+(so?'':'onclick="goal(\''+teamId+'\','+p.n+')"')+'>'+
+    ava(tm,p)+'<span class="num">'+p.n+'</span><span class="nm">'+esc(shortName(p.name))+(so?' 🟥':'')+'</span><span class="pos">'+p.pos+'</span></button>'; }).join('');
+  const bench=side.bench.map(byNum).sort((a,b)=>(order[a.pos]??4)-(order[b.pos]??4)||a.n-b.n);
+  if(bench.length){
+    h+='<div class="lineup-sec sub">🪑 Запас · '+bench.length+'</div>';
+    h+=bench.map(p=>'<div class="pbtn bench">'+ava(tm,p)+'<span class="num">'+p.n+'</span><span class="nm">'+esc(shortName(p.name))+'</span><span class="pos">'+p.pos+'</span></div>').join('');
+  }
+  return h;
 }
 const GOAL_PHRASES=['Мощный удар под перекладину!','Вратарь был бессилен!','Разобрался с защитой и пробил!','Хладнокровная реализация!','Что за гол!','Точно в дальний угол!','Великолепная комбинация!','Пушка с разворота!','Добил после отскока!','На исполнении — выше класс!','Прострел и удар в касание!','Со штрафного — красавец!'];
 function commentaryFor(e){ return GOAL_PHRASES[hashStr('g'+(e.min||0)+'#'+(e.scorer||0))%GOAL_PHRASES.length]; }
