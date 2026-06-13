@@ -32,7 +32,7 @@ body{padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom);min-height:1
 body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.5;
   background-image:linear-gradient(rgba(255,255,255,.02) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.02) 1px,transparent 1px);
   background-size:34px 34px;mask-image:radial-gradient(circle at 50% 10%,#000,transparent 78%);-webkit-mask-image:radial-gradient(circle at 50% 10%,#000,transparent 78%);}
-#app{position:relative;z-index:1;max-width:560px;margin:0 auto;padding:12px 12px 96px;min-height:100vh;animation:viewIn .3s cubic-bezier(.2,.7,.2,1) both;}
+#app{position:relative;z-index:1;max-width:560px;margin:0 auto;padding:12px 12px 130px;min-height:100vh;animation:viewIn .3s cubic-bezier(.2,.7,.2,1) both;}
 @keyframes viewIn{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:none;}}
 @keyframes fadeUp{from{opacity:0;transform:translateY(12px);}to{opacity:1;transform:none;}}
 @keyframes pop{0%{transform:scale(1);}40%{transform:scale(1.4);}70%{transform:scale(.94);}100%{transform:scale(1);}}
@@ -191,7 +191,7 @@ input[type=text]:focus{outline:none;border-color:var(--acc2);}
 .step .v{font-size:21px;font-weight:850;min-width:34px;text-align:center;}
 .toast{position:fixed;bottom:26px;left:50%;transform:translateX(-50%);background:var(--bg3);border:1px solid var(--line);color:var(--tx);
   padding:11px 18px;border-radius:13px;font-size:14px;z-index:99;box-shadow:0 8px 28px rgba(0,0,0,.55);white-space:nowrap;animation:fadeUp .25s ease both;}
-.fab{position:fixed;bottom:calc(18px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);z-index:10;box-shadow:0 8px 24px rgba(16,185,129,.38);padding:14px 26px;font-size:16px;border-radius:16px;}
+.fab{position:fixed;bottom:calc(68px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);z-index:10;box-shadow:0 8px 24px rgba(16,185,129,.38);padding:14px 26px;font-size:16px;border-radius:16px;}
 .empty{text-align:center;color:var(--tx2);padding:44px 16px;font-size:14px;}
 .hdr{display:flex;align-items:center;gap:10px;margin-bottom:6px;}
 .back{font-size:26px;padding:4px 10px 4px 0;cursor:pointer;color:var(--tx2);transition:color .15s;}
@@ -212,6 +212,38 @@ input[type=text]:focus{outline:none;border-color:var(--acc2);}
 .cardbox{width:24px;display:inline-flex;align-items:center;justify-content:center;font-size:15px;flex:none;}
 .fitem.ev-chance{opacity:.8;padding-top:5px;padding-bottom:5px;}
 .fitem.ev-card .min{color:var(--warn);}
+.fitem .evlogo{display:inline-flex;vertical-align:middle;margin-right:3px;}
+.fitem .evlogo .tlogo,.fitem .evlogo .tcolor{width:15px;height:15px;font-size:8px;}
+.penkicker .evlogo .tlogo,.penkicker .evlogo .tcolor{width:16px;height:16px;font-size:8px;}
+.penwrap{text-align:center;}
+.pentitle{font-size:13px;font-weight:850;letter-spacing:2px;color:var(--acc2);margin-bottom:10px;}
+.penscore{display:flex;align-items:center;justify-content:center;gap:14px;font-size:30px;font-weight:900;font-variant-numeric:tabular-nums;}
+.penscore .pteam{display:flex;align-items:center;gap:8px;}
+.penscore .pteam .tlogo,.penscore .pteam .tcolor{width:30px;height:30px;font-size:12px;}
+.penscore .pdash{color:var(--tx3);font-weight:300;}
+.penrows{display:flex;flex-direction:column;gap:5px;margin:9px 0;}
+.penrows>div{display:flex;gap:6px;justify-content:center;}
+.pmark{font-size:14px;color:var(--tx3);line-height:1;}
+.pmark.g{color:var(--acc);} .pmark.m{color:var(--red);}
+.penkicker{display:flex;align-items:center;justify-content:center;gap:7px;margin:6px 0 12px;font-size:14.5px;}
+.goalframe{position:relative;width:100%;max-width:330px;aspect-ratio:16/9.5;margin:0 auto;border:4px solid #e8eef5;border-bottom:none;border-radius:10px 10px 0 0;
+  background:linear-gradient(#101a28,#0b1119);overflow:hidden;
+  background-image:repeating-linear-gradient(90deg,transparent 0 26px,rgba(255,255,255,.045) 26px 27px),repeating-linear-gradient(0deg,transparent 0 26px,rgba(255,255,255,.045) 26px 27px);}
+.goalframe .zones{position:absolute;inset:0;display:grid;grid-template-columns:1fr 1fr 1fr;grid-template-rows:1fr 1fr 1fr;z-index:3;}
+.goalframe .zone{cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:22px;transition:background .12s;border:1px solid rgba(255,255,255,.03);}
+.goalframe .zone:active{background:rgba(52,211,153,.22);}
+.goalframe .zone.panenka:active{background:rgba(251,191,36,.25);}
+.keeper{position:absolute;left:50%;top:54%;width:34px;height:60px;margin-left:-17px;border-radius:16px 16px 8px 8px;
+  background:linear-gradient(#fbbf24,#f59e0b);z-index:2;box-shadow:0 4px 14px rgba(0,0,0,.55);}
+.keeper::before{content:"";position:absolute;left:50%;top:-15px;margin-left:-9px;width:18px;height:18px;border-radius:50%;background:#f6d08a;box-shadow:0 2px 6px rgba(0,0,0,.4);}
+.ball{position:absolute;left:50%;top:102%;width:18px;height:18px;margin:-9px 0 0 -9px;border-radius:50%;
+  background:radial-gradient(circle at 35% 30%,#fff,#c2ccd8);z-index:4;box-shadow:0 2px 7px rgba(0,0,0,.55);}
+.penflash{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:36px;font-weight:900;opacity:0;z-index:5;pointer-events:none;}
+.penflash.show{animation:addedPop .3s ease both;opacity:1;}
+.penflash.goal{color:var(--acc);text-shadow:0 0 20px rgba(52,211,153,.65);}
+.penflash.save{color:var(--acc2);text-shadow:0 0 16px rgba(34,211,238,.5);}
+.penflash.miss{color:var(--red);}
+.penhint{margin-top:12px;font-size:13px;color:var(--tx2);}
 .award{display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--line2);}
 .award:last-child{border-bottom:none;}
 .award .ic{font-size:22px;width:28px;text-align:center;flex:none;}
@@ -1525,20 +1557,21 @@ function eventLine(t,m,e,delIdx){
   const tm=team(t,e.team);
   const min='<span class="min">'+(e.min!=null?e.min+"'":'')+(e.ot?'+':'')+'</span>';
   const del=(delIdx!=null)?'<span class="del" onclick="delEvent('+delIdx+')">✕</span>':'';
+  const lg='<span class="evlogo">'+tLogo(tm)+'</span>';
   if(e.type==='yc'||e.type==='rc'){
     const card=e.type==='rc'?'🟥':'🟨', lab=e.type==='rc'?'удаление':'предупреждение';
     return '<div class="fitem ev-card">'+min+'<span class="cardbox">'+card+'</span>'+
-      '<span class="grow"><b>'+esc(playerName(t,e.team,e.pl))+'</b> <span class="muted">'+lab+' · '+esc(tm.name)+'</span></span>'+del+'</div>';
+      '<span class="grow">'+lg+'<b>'+esc(playerName(t,e.team,e.pl))+'</b> <span class="muted">'+lab+' · '+esc(tm.name)+'</span></span>'+del+'</div>';
   }
   if(e.type==='chance'){
     const c=CHANCE_KINDS[e.kind||0];
     return '<div class="fitem ev-chance">'+min+'<span class="ball">'+c.i+'</span>'+
-      '<span class="grow muted"><b style="color:var(--tx2)">'+esc(playerName(t,e.team,e.pl))+'</b> '+c.t+'</span>'+del+'</div>';
+      '<span class="grow muted">'+lg+'<b style="color:var(--tx2)">'+esc(playerName(t,e.team,e.pl))+'</b> '+c.t+'</span>'+del+'</div>';
   }
   const p=e.scorer!=null? tm.players.find(x=>x.n===e.scorer):null;
   const avatar=p? ava(tm,p): tLogo(tm);
   return '<div class="fitem">'+min+avatar+'<span class="ball">'+(t.sport==='hockey'?'🏒':'⚽')+'</span>'+
-    '<span class="grow"><b>'+esc(p?p.name:'Гол')+'</b>'+(e.assist!=null?' <span class="muted">('+esc(playerName(t,e.team,e.assist))+')</span>':'')+
+    '<span class="grow">'+lg+'<b>'+esc(p?p.name:'Гол')+'</b>'+(e.assist!=null?' <span class="muted">('+esc(playerName(t,e.team,e.assist))+')</span>':'')+
     (e.scorer!=null?'<div class="commentary">'+esc(commentaryFor(e))+'</div>':'')+'</span>'+del+'</div>';
 }
 function feedHtml(t,m){
@@ -1678,6 +1711,88 @@ function delEvent(i){
   if(t.config.matchMode.type==='goals') m.virtMin=m.events.reduce((mx,e)=>(!e.ot&&e.min>mx)?e.min:mx, 0);
   save(); refreshLiveScore(); vibr(20);
 }
+let PEN=null;
+const PEN_OFF=[0.11,0.06,0.11, 0.05,0.13,0.05, 0.03,0.02,0.03];
+const PEN_SAVE=[0.45,0.6,0.45, 0.7,0.72,0.7, 0.85,0.9,0.85];
+const PEN_KW=[3,2,3, 2.5,0.6,2.5, 3.5,1.2,3.5];
+function penKeeperPick(){ let tot=0; PEN_KW.forEach(w=>tot+=w); let r=Math.random()*tot; for(let i=0;i<9;i++){ r-=PEN_KW[i]; if(r<=0) return i; } return 8; }
+function penShooters(tm){ const o=tm.players.filter(p=>p.pos!=='ВР').sort((a,b)=>skillOf(b)-skillOf(a)); return o.length?o:tm.players.slice(); }
+function shootoutUI(){ const t=lvT(), m=lvM(); closeModal(); startShootout(t,m); }
+function startShootout(t,m){
+  PEN={ t, m, htaken:0, ataken:0, hgoals:0, agoals:0, hlog:[], alog:[], busy:false, done:false,
+    hS:penShooters(team(t,m.home)), aS:penShooters(team(t,m.away)) };
+  renderShootout();
+}
+function penNextKicker(){ return PEN.htaken===PEN.ataken? 'h':'a'; }
+function penDecided(){
+  const H=PEN.hgoals,A=PEN.agoals,ht=PEN.htaken,at=PEN.ataken;
+  if(ht<=5||at<=5){ const rH=Math.max(0,5-ht), rA=Math.max(0,5-at); if(H>A+rA) return 'h'; if(A>H+rH) return 'a'; }
+  if(ht>=5&&at>=5&&ht===at){ if(H>A) return 'h'; if(A>H) return 'a'; }
+  return null;
+}
+function penMarks(log,taken){ let s=''; const N=Math.max(5,taken,log.length); for(let i=0;i<N;i++){ const r=log[i]; s+='<span class="pmark '+(r==='goal'?'g':r?'m':'')+'">'+(r==='goal'?'●':r?'○':'·')+'</span>'; } return s; }
+function renderShootout(){
+  const t=PEN.t,m=PEN.m, home=team(t,m.home), away=team(t,m.away);
+  const side=penNextKicker(), kt=side==='h'?home:away;
+  const shooter = side==='h'? PEN.hS[PEN.htaken%PEN.hS.length] : PEN.aS[PEN.ataken%PEN.aS.length];
+  let h='<div class="penwrap">';
+  h+='<div class="pentitle">'+(t.sport==='hockey'?'🏒 БУЛЛИТЫ':'🥅 СЕРИЯ ПЕНАЛЬТИ')+'</div>';
+  h+='<div class="penscore"><div class="pteam">'+tLogo(home)+'<b>'+PEN.hgoals+'</b></div><div class="pdash">:</div><div class="pteam"><b>'+PEN.agoals+'</b>'+tLogo(away)+'</div></div>';
+  h+='<div class="penrows"><div>'+penMarks(PEN.hlog,PEN.htaken)+'</div><div>'+penMarks(PEN.alog,PEN.ataken)+'</div></div>';
+  h+='<div class="penkicker">'+ava(kt,shooter)+'<span class="evlogo">'+tLogo(kt)+'</span><b>'+esc(shooter.name)+'</b></div>';
+  h+='<div class="goalframe"><div class="keeper" id="pk"></div><div class="zones">';
+  for(let z=0;z<9;z++) h+='<div class="zone'+(z===4?' panenka':'')+'" onclick="penShoot('+z+')">'+(z===4?'🪶':'')+'</div>';
+  h+='</div><div class="ball" id="pb"></div><div class="penflash" id="pf"></div></div>';
+  h+='<div class="penhint">Тапни, куда бьёт <b>'+esc(kt.name)+'</b> · угол · центр · паненка</div>';
+  h+='</div>';
+  showModal(h, ()=>{});
+}
+function penShoot(zone){
+  if(!PEN||PEN.busy||PEN.done) return; PEN.busy=true;
+  const side=penNextKicker();
+  const shooter = side==='h'? PEN.hS[PEN.htaken%PEN.hS.length] : PEN.aS[PEN.ataken%PEN.aS.length];
+  const sk=(skillOf(shooter)-0.65)/1.25;
+  const keeperZone=penKeeperPick();
+  let res;
+  if(Math.random() < PEN_OFF[zone]*(1-0.4*sk)) res='miss';
+  else if(keeperZone===zone && Math.random()<PEN_SAVE[zone]) res='save';
+  else res='goal';
+  penAnimate(zone,keeperZone,res,function(){
+    if(side==='h'){ PEN.htaken++; if(res==='goal')PEN.hgoals++; PEN.hlog.push(res); }
+    else { PEN.ataken++; if(res==='goal')PEN.agoals++; PEN.alog.push(res); }
+    vibr(res==='goal'?60:25);
+    PEN.busy=false;
+    const dec=penDecided();
+    if(dec) penFinish(dec); else renderShootout();
+  });
+}
+function penAnimate(zone,keeperZone,res,cb){
+  const wrap=document.querySelector('.goalframe'); if(!wrap){ cb(); return; }
+  const zEls=wrap.querySelectorAll('.zone'); const fr=wrap.getBoundingClientRect();
+  const zr=zEls[zone].getBoundingClientRect(), kr=zEls[keeperZone].getBoundingClientRect();
+  const ball=document.getElementById('pb'), keep=document.getElementById('pk'), flash=document.getElementById('pf');
+  if(!ball||!keep){ cb(); return; }
+  ball.style.transition='none'; ball.style.left='50%'; ball.style.top='102%'; ball.style.transform='translate(-50%,-50%) scale(1)';
+  void ball.offsetWidth;
+  ball.style.transition='left .42s cubic-bezier(.3,.7,.4,1), top .42s cubic-bezier(.3,.7,.4,1), transform .42s';
+  ball.style.left=((zr.left-fr.left)+zr.width/2)+'px';
+  ball.style.top=((zr.top-fr.top)+zr.height/2)+'px';
+  ball.style.transform='translate(-50%,-50%) scale(.8)';
+  const kx=((kr.left-fr.left)+kr.width/2)-(fr.width/2);
+  keep.style.transition='transform .34s cubic-bezier(.2,.8,.2,1)';
+  keep.style.transform='translate('+(kx*0.66)+'px,'+((keeperZone<3?-18:keeperZone>5?8:-6))+'px) rotate('+(kx>4?20:kx<-4?-20:0)+'deg)';
+  setTimeout(function(){ flash.textContent= res==='goal'?'ГОЛ!':res==='save'?'СЕЙВ!':'МИМО!'; flash.className='penflash show '+res; }, 370);
+  setTimeout(cb, 1080);
+}
+function penFinish(side){
+  PEN.done=true; const t=PEN.t, m=PEN.m;
+  m.penWinner = side==='h'? m.home : m.away;
+  m.penScore={h:PEN.hgoals,a:PEN.agoals};
+  const wn=team(t,m.penWinner).name, sc=PEN.hgoals+':'+PEN.agoals;
+  closeModal();
+  toast('🏆 '+wn+' — победа по '+(t.sport==='hockey'?'буллитам':'пенальти')+' '+sc);
+  finishMatch(t.sport==='hockey'?'SO':'PEN');
+}
 function tryFinish(){
   const t=lvT(), m=lvM();
   if(m.status==='done') return;
@@ -1690,18 +1805,14 @@ function tryFinish(){
     if(t.sport==='hockey'){
       let h='<h3>Ничья '+m.gh+':'+m.ga+aggTxt+'</h3><p class="muted">Как решаем?</p>'+
         '<div class="btn blue wide" style="margin-bottom:8px" onclick="goOT()">🏒 Овертайм — следующий гол побеждает</div>'+
-        '<div class="lbl" style="margin:10px 0 6px;font-size:12px;color:var(--tx2)">или буллиты — кто победил:</div>'+
-        '<div class="row"><div class="btn grow" onclick="decide(\''+m.home+'\',\'SO\')">'+esc(home.name)+'</div>'+
-        '<div class="btn grow" onclick="decide(\''+m.away+'\',\'SO\')">'+esc(away.name)+'</div></div>'+
-        '<div style="height:8px"></div><div class="btn wide" onclick="closeModal()">Отмена</div>';
+        '<div class="btn primary wide" style="margin-bottom:8px" onclick="shootoutUI()">🥅 Пробить буллиты</div>'+
+        '<div class="btn wide" onclick="closeModal()">Отмена</div>';
       showModal(h);
     } else {
       let h='<h3>Ничья '+m.gh+':'+m.ga+aggTxt+'</h3>'+
         '<div class="btn blue wide" style="margin-bottom:8px" onclick="closeModal();toast(\'Играем дальше!\')">⏱ Доп. время — продолжить матч</div>'+
-        '<div class="lbl" style="margin:10px 0 6px;font-size:12px;color:var(--tx2)">или серия пенальти — кто победил:</div>'+
-        '<div class="row"><div class="btn grow" onclick="decide(\''+m.home+'\',\'PEN\')">'+esc(home.name)+'</div>'+
-        '<div class="btn grow" onclick="decide(\''+m.away+'\',\'PEN\')">'+esc(away.name)+'</div></div>'+
-        '<div style="height:8px"></div><div class="btn wide" onclick="closeModal()">Отмена</div>';
+        '<div class="btn primary wide" style="margin-bottom:8px" onclick="shootoutUI()">🥅 Пробить серию пенальти</div>'+
+        '<div class="btn wide" onclick="closeModal()">Отмена</div>';
       showModal(h);
     }
     return;
