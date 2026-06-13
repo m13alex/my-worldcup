@@ -512,13 +512,13 @@ function qualifiers(t){
   const adv=t.config.advance, G=t.groups.length;
   const tables=t.groups.map(g=>computeTable(g.teams, t.matches.filter(m=>m.stage==='group'&&m.group===g.name), t.sport));
   if(adv===2 && G>=2 && G%2===0){
-    const w=tables.map(tb=>tb[0].team), ru=tables.map(tb=>tb[1].team);
+    const w=tables.map(tb=>(tb[0]||{}).team), ru=tables.map(tb=>(tb[1]||tb[0]||{}).team);
     const list=[];
     for(let i=0;i<G;i+=2){ list.push([w[i],ru[i+1]]); list.push([w[i+1],ru[i]]); }
     const firstHalf=list.filter((_,i)=>i%2===0), secondHalf=list.filter((_,i)=>i%2===1);
     return { mode:'pairs', pairs:[...firstHalf,...secondHalf] };
   }
-  const ratingOf=id=>t.teams.find(x=>x.id===id).rating;
+  const ratingOf=id=>{ const x=t.teams.find(x=>x.id===id); return x?x.rating:0; };
   const all=[];
   tables.forEach(tb=>tb.slice(0,adv).forEach((row,place)=>all.push({...row,place})));
   all.sort((x,y)=> x.place-y.place || y.pts-x.pts || (y.gf-y.ga)-(x.gf-x.ga) || y.gf-x.gf || ratingOf(y.team)-ratingOf(x.team));
@@ -593,12 +593,14 @@ function tacticIcon(t,id){ const x=tacticOf(t,id); return x==='att'?'⚔️':x==
 function tacticName(x){ return x==='att'?'Атакующая':x==='def'?'Оборонительная':'Сбалансированная'; }
 function updateElo(t,m){
   if(!t.elo) t.elo={};
+  if(m.eloDelta!=null){ t.elo[m.home]=(t.elo[m.home]||0)-m.eloDelta; t.elo[m.away]=(t.elo[m.away]||0)+m.eloDelta; }
   const ra=ratingOf(t,team(t,m.home)), rb=ratingOf(t,team(t,m.away));
   const exp=1/(1+Math.pow(10,(rb-ra)/200));
   const res = m.gh>m.ga?1 : m.gh<m.ga?0 : (m.penWinner? (m.penWinner===m.home?0.72:0.28) : 0.5);
   const d=4*(res-exp);
   t.elo[m.home]=(t.elo[m.home]||0)+d;
   t.elo[m.away]=(t.elo[m.away]||0)-d;
+  m.eloDelta=d;
 }
 function expGoals(t, ra, rb){
   const base = t.sport==='hockey'? 2.7 : 1.35;
@@ -723,7 +725,7 @@ function simulateMatch(t, match, fromCurrent){
     if(w==='h')match.gh++; else match.ga++;
     match.events.push(mkEvent(t, team, V+1+rnd(t.sport==='hockey'?5:30), true));
     match.result='OT'; match.status='done'; match.timerRunning=false; match.timerStartedAt=null;
-    autoMVP(t,match); onMatchDone(t,match); return;
+    genStats(t,match); autoMVP(t,match); onMatchDone(t,match); return;
   }
   const gh0=match.gh, ga0=match.ga;
   let startMin=0;
@@ -859,7 +861,7 @@ let S = load();
 function load(){
   try{ const s=JSON.parse(localStorage.getItem(LS));
     if(s&&s.tournaments){
-      s.tournaments.forEach(t=>t.matches.forEach(m=>{ if(m.timerRunning){ m.timerRunning=false; m.timerStartedAt=null; } }));
+      s.tournaments.forEach(t=>{ t.elo=t.elo||{}; t.tactic=t.tactic||{}; t.pred=t.pred||{}; (Array.isArray(t.matches)?t.matches:(t.matches=[])).forEach(m=>{ m.events=m.events||[]; if(m.timerRunning){ m.timerRunning=false; m.timerStartedAt=null; } }); });
       return s;
     }
   }catch(e){
@@ -907,8 +909,9 @@ let logoCache={};
 try{ logoCache=JSON.parse(localStorage.getItem('mwc_logos')||'{}'); }catch(e){ logoCache={}; }
 let favTeams; try{ favTeams=new Set(JSON.parse(localStorage.getItem('mwc_fav')||'[]')); }catch(e){ favTeams=new Set(); }
 function logoSrc(id){ return logoCache[id] || LOGOS[id] || null; }
+function safeColor(c){ return (typeof c==='string' && /^#?[0-9a-zA-Z(),.%\s-]{1,40}$/.test(c)) ? c : '#888'; }
 function fallbackCircle(tm, cls){
-  return '<span class="'+(cls||'tcolor')+'" style="background:linear-gradient(135deg,'+tm.colors[0]+' 50%,'+tm.colors[1]+' 50%)">'+esc(tm.name[0]||'')+'</span>';
+  return '<span class="'+(cls||'tcolor')+'" style="background:linear-gradient(135deg,'+safeColor(tm.colors[0])+' 50%,'+safeColor(tm.colors[1])+' 50%)">'+esc(tm.name[0]||'')+'</span>';
 }
 function tLogo(tm){
   const u=logoSrc(tm.id);
@@ -965,7 +968,7 @@ function ava(tm, p){
   return init;
 }
 function fallAva(tm,p){
-  return '<span class="avi" style="background:linear-gradient(135deg,'+tm.colors[0]+','+tm.colors[1]+')">'+esc(initials(p.name))+'</span>';
+  return '<span class="avi" style="background:linear-gradient(135deg,'+safeColor(tm.colors[0])+','+safeColor(tm.colors[1])+')">'+esc(initials(p.name))+'</span>';
 }
 
 /* ================= router ================= */
@@ -1049,7 +1052,7 @@ function qmModal(){
     '<div class="btn small wide" style="margin-bottom:10px" onclick="qmRandom();qmModal()">🔀 Случайные соперники</div>'+
     '<div class="row"><div class="btn blue grow" onclick="qmStart(true)">⚡ Симулировать</div><div class="btn primary grow" onclick="qmStart(false)">▶ Играть</div></div>');
 }
-function tLogoBig(tm){ const u=logoSrc(tm.id); if(u) return '<img class="tlogo" style="width:40px;height:40px" loading="lazy" src="'+u+'" alt="" onerror="logoFail(this,\''+tm.id+'\')">'; return '<span class="tcolor" style="width:40px;height:40px;font-size:15px;background:linear-gradient(135deg,'+tm.colors[0]+' 50%,'+tm.colors[1]+' 50%)">'+esc(tm.name[0]||'')+'</span>'; }
+function tLogoBig(tm){ const u=logoSrc(tm.id); if(u) return '<img class="tlogo" style="width:40px;height:40px" loading="lazy" src="'+u+'" alt="" onerror="logoFail(this,\''+tm.id+'\')">'; return '<span class="tcolor" style="width:40px;height:40px;font-size:15px;background:linear-gradient(135deg,'+safeColor(tm.colors[0])+' 50%,'+safeColor(tm.colors[1])+' 50%)">'+esc(tm.name[0]||'')+'</span>'; }
 function qmSetSport(sp){ QM.sport=sp; qmRandom(); qmModal(); }
 function qmPick(slot){
   const pool=DB[QM.sport].slice().sort((a,b)=>b.rating-a.rating);
@@ -1102,11 +1105,13 @@ function doImport(){
         '<div class="row"><div class="btn grow" onclick="closeModal()">Отмена</div>'+
         '<div class="btn danger grow" id="impok">Заменить</div></div>');
       document.getElementById('impok').onclick=()=>{
+        const prev=S;
         try{
-          s.tournaments.forEach(t=>(t.matches||[]).forEach(m=>{ if(m.timerRunning){ m.timerRunning=false; m.timerStartedAt=null; } }));
+          if(!Array.isArray(s.tournaments) || !s.tournaments.every(t=>t&&t.config&&Array.isArray(t.teams)&&t.teams.every(x=>x&&Array.isArray(x.players)&&x.players.length)&&Array.isArray(t.matches))) throw new Error('bad');
+          s.tournaments.forEach(t=>{ t.elo=t.elo||{}; t.tactic=t.tactic||{}; t.pred=t.pred||{}; t.matches.forEach(m=>{ m.events=m.events||[]; if(m.timerRunning){ m.timerRunning=false; m.timerStartedAt=null; } }); });
           s.seq=s.seq||1;
-          S=s; save(); closeModal(); render(); toast('Импортировано');
-        }catch(e){ closeModal(); toast('Файл повреждён'); } };
+          S=s; render(); save(); closeModal(); toast('Импортировано');
+        }catch(e){ S=prev; closeModal(); toast('Файл повреждён или несовместим'); } };
     }catch(e){toast('Ошибка чтения');} };
     r.readAsText(f); };
   inp.click();
@@ -1681,6 +1686,8 @@ function canReset(t,m){
 function resetMatch(tid,mid){
   const t=tById(tid), m=t.matches.find(x=>x.id===mid);
   if(!canReset(t,m)){ toast('Нельзя: следующий раунд уже начат'); return; }
+  if(m.eloDelta!=null && t.elo){ t.elo[m.home]=(t.elo[m.home]||0)-m.eloDelta; t.elo[m.away]=(t.elo[m.away]||0)+m.eloDelta; }
+  t.bestXI=null;
   if(m.stage==='group' && t.config.format==='league' && t.status==='finished'){
     t.status='active'; t.champion=null; t.finishedAt=null; t.celebrated=false;
   }
@@ -1704,7 +1711,7 @@ function resetMatch(tid,mid){
       tie.matches.forEach(id=>{ const z=t.matches.find(q=>q.id===id); if(z&&z.id!==m.id&&z.penWinner){ z.penWinner=null; if(z.result==='PEN'||z.result==='SO') z.result='REG'; } });
     }
   }
-  Object.assign(m,{status:'scheduled',gh:0,ga:0,events:[],result:null,penWinner:null,timerElapsed:0,timerRunning:false,timerStartedAt:null,otPending:false,mvp:null,virtMin:0,lineup:null,stats:null,penScore:null,subsUsed:null});
+  Object.assign(m,{status:'scheduled',gh:0,ga:0,events:[],result:null,penWinner:null,timerElapsed:0,timerRunning:false,timerStartedAt:null,otPending:false,mvp:null,virtMin:0,lineup:null,stats:null,penScore:null,subsUsed:null,eloDelta:null});
   save(); closeModal(); render(); toast('Матч сброшен');
 }
 function confetti(){
@@ -2029,8 +2036,11 @@ function addCard(teamId,n){
 }
 function delEvent(i){
   const t=lvT(), m=lvM();
+  const _e=m.events[i];
+  if(_e && _e.type==='sub' && m.lineup){ const _s=_e.team===m.home?m.lineup.home:m.lineup.away; const _oi=_s.xi.indexOf(_e.on); if(_oi>=0){ _s.xi[_oi]=_e.off; _s.bench=_s.bench.filter(n=>n!==_e.off); _s.bench.push(_e.on); } if(m.subsUsed&&m.subsUsed[_e.team]) m.subsUsed[_e.team]=Math.max(0,m.subsUsed[_e.team]-1); }
   m.events.splice(i,1); recountScore(m);
   if(m.otPending && !needsDecider(t,m)){ m.otPending=false; render(); toast('Овертайм отменён — ничьей больше нет'); }
+  if(m.result && m.result!=='REG' && !m.otPending && !needsDecider(t,m)){ m.result='REG'; m.penWinner=null; }
   if(t.config.matchMode.type==='goals') m.virtMin=m.events.reduce((mx,e)=>(!e.ot&&e.min>mx)?e.min:mx, 0);
   save(); refreshLiveScore(); vibr(20);
 }
@@ -2039,7 +2049,7 @@ const PEN_OFF=[0.11,0.06,0.11, 0.05,0.13,0.05, 0.03,0.02,0.03];
 const PEN_SAVE=[0.45,0.6,0.45, 0.7,0.72,0.7, 0.85,0.9,0.85];
 const PEN_KW=[3,2,3, 2.5,0.6,2.5, 3.5,1.2,3.5];
 function penKeeperPick(){ let tot=0; PEN_KW.forEach(w=>tot+=w); let r=Math.random()*tot; for(let i=0;i<9;i++){ r-=PEN_KW[i]; if(r<=0) return i; } return 8; }
-function penShooters(t,tm,m){ const off=m?m.events.filter(e=>e.type==='rc'&&e.team===tm.id).map(e=>e.pl):[]; const sus=m?[...suspendedFor(t,tm.id,m.id)]:[]; const bad=new Set([...off,...sus]); const o=tm.players.filter(p=>p.pos!=='ВР'&&!bad.has(p.n)).sort((a,b)=>skillOf(b)-skillOf(a)); return o.length?o:tm.players.filter(p=>!bad.has(p.n)); }
+function penShooters(t,tm,m){ const off=m?m.events.filter(e=>(e.type==='rc'||e.type==='inj')&&e.team===tm.id).map(e=>e.pl):[]; const sus=m?[...suspendedFor(t,tm.id,m.id)]:[]; const bench=(m&&m.lineup)?(((tm.id===m.home?m.lineup.home:m.lineup.away).bench)||[]):[]; const bad=new Set([...off,...sus,...bench]); const o=tm.players.filter(p=>p.pos!=='ВР'&&!bad.has(p.n)).sort((a,b)=>skillOf(b)-skillOf(a)); return o.length?o:tm.players.filter(p=>!bad.has(p.n)); }
 function shootoutUI(){ const t=lvT(), m=lvM(); closeModal(); startShootout(t,m); }
 function startShootout(t,m){
   PEN={ t, m, htaken:0, ataken:0, hgoals:0, agoals:0, hlog:[], alog:[], busy:false, done:false,
@@ -2128,8 +2138,8 @@ function penaltyUI(){
 }
 function pkTeam(teamId){
   const t=lvT(), tm=team(t,teamId), m=lvM();
-  const off=m?m.events.filter(e=>e.type==='rc'&&e.team===teamId).map(e=>e.pl):[];
-  const sus=m?[...suspendedFor(t,teamId,m.id)]:[]; const bad=new Set([...off,...sus]);
+  const off=m?m.events.filter(e=>(e.type==='rc'||e.type==='inj')&&e.team===teamId).map(e=>e.pl):[];
+  const sus=m?[...suspendedFor(t,teamId,m.id)]:[]; const bench=(m&&m.lineup)?(((teamId===m.home?m.lineup.home:m.lineup.away).bench)||[]):[]; const bad=new Set([...off,...sus,...bench]);
   const sh=tm.players.filter(p=>p.pos!=='ВР'&&!bad.has(p.n)).sort((a,b)=>skillOf(b)-skillOf(a));
   let h='<h3>Кто бьёт пенальти?</h3><div class="pgrid">'+
     sh.map(p=>'<button class="pbtn" onclick="pkShoot(\''+teamId+'\','+p.n+')">'+ava(tm,p)+'<span class="num">'+p.n+'</span><span class="nm">'+esc(shortName(p.name))+'</span></button>').join('')+
@@ -2289,7 +2299,7 @@ function crowdRoar(){ if(!sndOn()) return; try{
   g.gain.setValueAtTime(0,t0); g.gain.linearRampToValueAtTime(0.5,t0+0.22); g.gain.linearRampToValueAtTime(0.30,t0+0.7); g.gain.linearRampToValueAtTime(0,t0+dur);
   srcn.connect(bp); bp.connect(g); g.connect(ctx.destination); srcn.start(); srcn.stop(t0+dur);
 }catch(e){} }
-function predOutcome(m){ return m.gh>m.ga?'h': m.gh<m.ga?'a':'d'; }
+function predOutcome(m){ if(m.gh!==m.ga) return m.gh>m.ga?'h':'a'; if(m.penWinner) return m.penWinner===m.home?'h':'a'; return 'd'; }
 function setPred(tid,mid,o){ const t=tById(tid); if(!t) return; const m=t.matches.find(x=>x.id===mid); if(!m||m.status==='done') return; t.pred=t.pred||{}; t.pred[mid]=o; save(); closeModal(); toast('🎯 Прогноз сохранён'); }
 function predStats(t){ let n=0,c=0; if(t.pred){ t.matches.forEach(m=>{ if(m.status==='done'&&t.pred[m.id]){ n++; if(predOutcome(m)===t.pred[m.id]) c++; } }); } return {n,c,pts:c*3}; }
 function totalGoals(s){ let g=0; (s.tournaments||[]).forEach(t=>t.matches.forEach(m=>{ if(m.status==='done') m.events.forEach(e=>{ if(!e.type&&e.scorer!=null) g++; }); })); return g; }
@@ -2375,6 +2385,9 @@ function setupPWA(){
     add('link',{rel:'manifest',href:url});
   }catch(e){}
 }
+function _persistTimer(){ try{ if(view&&view.name==='live'){ const m=lvM(); if(m&&m.timerRunning){ m.timerElapsed=curElapsed(m); m.timerStartedAt=Date.now(); save(); } } }catch(e){} }
+window.addEventListener('visibilitychange',function(){ if(document.hidden) _persistTimer(); });
+window.addEventListener('beforeunload', _persistTimer);
 render();
 setupPWA();
 checkAch();
