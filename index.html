@@ -253,6 +253,9 @@ input[type=text]:focus{outline:none;border-color:var(--acc2);}
 .xi-cap{font-size:9px;font-weight:800;color:var(--tx3);text-transform:uppercase;letter-spacing:1.2px;text-align:center;margin:2px 0;}
 .profile-ava{display:inline-flex;}
 .mfav{margin-left:auto;color:var(--gold);font-size:15px;cursor:pointer;padding:0 2px;}
+th[onclick]{cursor:pointer;user-select:none;}
+th[onclick]:active{color:var(--acc2);}
+.sarr{color:var(--acc2);font-size:9px;}
 .profile-ava .ava,.profile-ava .avi{width:64px;height:64px;font-size:22px;border-width:2px;}
 .award{display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--line2);}
 .award:last-child{border-bottom:none;}
@@ -1197,6 +1200,19 @@ function matchModeLabel(t){
   const mm=t.config.matchMode;
   return (mm.type==='goals'? 'матч до '+mm.goals+' голов':'матч '+mm.minutes+' мин');
 }
+function sortCol(th,type){
+  const table=th.closest('table'); if(!table) return;
+  const idx=th.cellIndex;
+  const rows=[...table.querySelectorAll('tr')].filter(r=>r.children.length && r.children[0].tagName==='TD');
+  if(rows.length<2) return;
+  const dir=(th.getAttribute('data-dir')==='desc')?'asc':'desc';
+  table.querySelectorAll('th').forEach(h=>{ h.removeAttribute('data-dir'); const s=h.querySelector('.sarr'); if(s) s.remove(); });
+  th.setAttribute('data-dir',dir);
+  const val=r=>{ const c=r.children[idx]; const tx=c?c.textContent.trim():''; if(type==='num'){ const m=tx.match(/-?\d+/); return m?parseInt(m[0],10):-Infinity; } return tx.toLowerCase(); };
+  rows.sort((a,b)=>{ const x=val(a),y=val(b); return (x<y?-1:x>y?1:0)*(dir==='asc'?1:-1); });
+  const p=rows[0].parentNode; rows.forEach((r,i)=>{ p.appendChild(r); const c0=r.children[0]; if(c0 && /^\d+$/.test(c0.textContent.trim())) c0.textContent=i+1; });
+  const ar=document.createElement('span'); ar.className='sarr'; ar.textContent=dir==='asc'?' ▲':' ▼'; th.appendChild(ar);
+}
 function rTables(t){
   let h='';
   const hk=t.sport==='hockey';
@@ -1204,8 +1220,8 @@ function rTables(t){
     const ms=t.matches.filter(m=>m.stage==='group'&&m.group===g.name);
     const tbl=computeTable(g.teams, ms, t.sport);
     if(t.groups.length>1) h+='<div class="gname">Группа '+g.name+'</div>';
-    h+='<div class="card" style="padding:6px 10px"><table><tr><th></th><th class="tname"></th><th>И</th><th>В</th>'+
-      (hk?'<th>ПО</th>':'<th>Н</th>')+'<th>П</th><th>'+(hk?'Ш':'Г')+'</th><th>О</th></tr>';
+    h+='<div class="card" style="padding:6px 10px"><table><tr><th></th><th class="tname"></th><th onclick="sortCol(this,\'num\')">И</th><th onclick="sortCol(this,\'num\')">В</th>'+
+      (hk?'<th onclick="sortCol(this,\'num\')">ПО</th>':'<th onclick="sortCol(this,\'num\')">Н</th>')+'<th onclick="sortCol(this,\'num\')">П</th><th onclick="sortCol(this,\'num\')">'+(hk?'Ш':'Г')+'</th><th onclick="sortCol(this,\'num\')">О</th></tr>';
     tbl.forEach((r,i)=>{
       const tm=team(t,r.team);
       const adv = t.config.format==='groups' && i<t.config.advance;
@@ -1405,6 +1421,25 @@ function rMatches(t){
   }
   return h||'<div class="empty">Матчей нет</div>';
 }
+let _mrowTimer=null, _mrowFired=false;
+function mrowDown(tid,mid){ clearTimeout(_mrowTimer); _mrowFired=false; _mrowTimer=setTimeout(function(){ _mrowTimer=null; _mrowFired=true; vibr(30); matchMenu(tid,mid); }, 480); }
+function mrowUp(){ if(_mrowTimer){ clearTimeout(_mrowTimer); _mrowTimer=null; } }
+function mrowTap(done,tid,mid){ if(_mrowFired){ _mrowFired=false; return; } (done?matchInfo:openMatch)(tid,mid); }
+function matchMenu(tid,mid){
+  const t=tById(tid); if(!t) return; const m=t.matches.find(x=>x.id===mid); if(!m) return;
+  const home=team(t,m.home), away=team(t,m.away);
+  let h='<h3 style="display:flex;align-items:center;gap:6px;font-size:15px">'+tLogo(home)+esc(home.name)+' — '+esc(away.name)+tLogo(away)+'</h3>';
+  if(m.status==='done') h+='<p class="muted" style="margin:0 0 10px">Счёт '+m.gh+':'+m.ga+fmtRes(m)+'</p>';
+  if(m.status!=='done'){
+    h+='<div class="btn primary wide" style="margin-bottom:8px" onclick="closeModal();openMatch(\''+tid+'\',\''+mid+'\')">▶ Открыть матч</div>';
+    h+='<div class="btn blue wide" style="margin-bottom:8px" onclick="closeModal();simRow(\''+tid+'\',\''+mid+'\')">⚡ Симулировать</div>';
+  } else {
+    h+='<div class="btn primary wide" style="margin-bottom:8px" onclick="closeModal();matchInfo(\''+tid+'\',\''+mid+'\')">📊 Статистика матча</div>';
+    if(canReset(t,m)) h+='<div class="btn danger wide" style="margin-bottom:8px" onclick="closeModal();resetMatch(\''+tid+'\',\''+mid+'\')">↺ Переиграть</div>';
+  }
+  h+='<div class="btn wide" onclick="closeModal()">Отмена</div>';
+  showModal(h);
+}
 function mRow(t,m){
   const home=team(t,m.home), away=team(t,m.away);
   let mid;
@@ -1419,7 +1454,7 @@ function mRow(t,m){
   }
   const leg=m.leg&&t.config.twoLeg&&m.stage==='po'&&m.rn!=='Финал'?'<span class="muted" style="font-size:10px;"> м'+m.leg+'</span>':'';
   const sim=m.status!=='done'? '<div class="simbtn" title="Симулировать" onclick="event.stopPropagation();simRow(\''+t.id+'\',\''+m.id+'\')">⚡</div>':'';
-  return '<div class="mrow" onclick="'+(m.status==='done'?'matchInfo':'openMatch')+'(\''+t.id+'\',\''+m.id+'\')">'+
+  return '<div class="mrow" onclick="mrowTap('+(m.status==='done'?1:0)+',\''+t.id+'\',\''+m.id+'\')" oncontextmenu="event.preventDefault();matchMenu(\''+t.id+'\',\''+m.id+'\');return false" ontouchstart="mrowDown(\''+t.id+'\',\''+m.id+'\')" ontouchend="mrowUp()" ontouchmove="mrowUp()">'+
     '<div class="side r"><span class="nm">'+esc(home.name)+'</span>'+tLogo(home)+'</div>'+
     '<div class="mid">'+mid+sim+'</div>'+
     '<div class="side"><span></span>'+tLogo(away)+'<span class="nm">'+esc(away.name)+leg+'</span></div></div>';
@@ -1436,7 +1471,7 @@ function rScorers(t){
   sc.sort((x,y)=> (y.g-x.g) || (x.mp-y.mp) || (y.a-x.a) || ((y.m||0)-(x.m||0)));
   const list=sc.slice(0,40);
   if(!list.length) return '<div class="empty">Голов пока нет</div>';
-  let h='<div class="card" style="padding:6px 10px"><table><tr><th></th><th class="tname">Игрок</th><th>Г&nbsp;(И)</th><th>А</th><th>О</th><th>★</th></tr>';
+  let h='<div class="card" style="padding:6px 10px"><table><tr><th></th><th class="tname" onclick="sortCol(this,\'text\')">Игрок</th><th onclick="sortCol(this,\'num\')">Г&nbsp;(И)</th><th onclick="sortCol(this,\'num\')">А</th><th onclick="sortCol(this,\'num\')">О</th><th onclick="sortCol(this,\'num\')">★</th></tr>';
   list.forEach((r,i)=>{
     const tm=team(t,r.team);
     const p=tm.players.find(p=>p.n===r.n)||{n:r.n,name:'№'+r.n};
