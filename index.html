@@ -103,6 +103,7 @@ tr.qual td:first-child::before{content:"";position:absolute;left:0;top:-1px;bott
   font-size:14.5px;cursor:pointer;transition:background .16s;border-radius:12px;}
 .mrow:first-child{border-top:none;}
 .mrow:active{background:rgba(255,255,255,.04);}
+.mrow.managed{box-shadow:inset 3px 0 0 var(--acc2);}
 .mrow .mid{display:flex;flex-direction:column;align-items:center;gap:6px;}
 .mrow .score{font-weight:850;font-size:15px;text-align:center;font-variant-numeric:tabular-nums;background:rgba(255,255,255,.05);
   border-radius:9px;padding:4px 11px;min-width:54px;line-height:1.15;}
@@ -1007,6 +1008,7 @@ function quickStartHtml(){
   if(act.length){ const last=act[0]; h+='<div class="btn primary wide" style="margin-bottom:12px" onclick="openT(\''+last.id+'\')">▶ Продолжить: '+esc(last.name)+'</div>'; }
   h+='<h2>Быстрый старт</h2><div class="card"><div class="chips">'+
     '<div class="btn small blue" onclick="quickMatch()">⚡ Быстрый матч</div>'+
+    '<div class="btn small gold" onclick="managerStart()">🎽 Менеджер</div>'+
     '<div class="btn small" onclick="buildPreset(\'cl16\')">🏆 ЛЧ · 16</div>'+
     '<div class="btn small" onclick="buildPreset(\'lg8\')">🥇 Лига · 8</div>'+
     '<div class="btn small" onclick="buildPreset(\'cup16\')">⚔ Кубок · 16</div>'+
@@ -1483,6 +1485,8 @@ function rMatches(t){
     if(t.config.format==='groups' && groupPending)
       h+='<div class="btn small grow" onclick="simStageUI(\''+t.id+'\',\'group\')">⚡ Групповой этап</div>';
     h+='<div class="btn small grow" onclick="simStageUI(\''+t.id+'\',\'all\')">⚡ Весь турнир</div></div>';
+    if(t.manage){ const _mt=team(t,t.manage); h+='<div class="btn primary wide" style="margin-bottom:10px" onclick="managerNext(\''+t.id+'\')">🎽 '+esc(_mt?_mt.name:'')+' — к следующему матчу</div>'; }
+    else h+='<div class="btn small wide" style="margin-bottom:10px" onclick="setManager(\''+t.id+'\')">🎽 Режим менеджера</div>';
   }
   const groups=t.matches.filter(m=>m.stage==='group');
   if(groups.length){
@@ -1540,7 +1544,7 @@ function mRow(t,m){
   }
   const leg=m.leg&&t.config.twoLeg&&m.stage==='po'&&m.rn!=='Финал'?'<span class="muted" style="font-size:10px;"> м'+m.leg+'</span>':'';
   const sim=m.status!=='done'? '<div class="simbtn" title="Симулировать" onclick="event.stopPropagation();simRow(\''+t.id+'\',\''+m.id+'\')">⚡</div>':'';
-  return '<div class="mrow" onclick="mrowTap('+(m.status==='done'?1:0)+',\''+t.id+'\',\''+m.id+'\')" oncontextmenu="event.preventDefault();matchMenu(\''+t.id+'\',\''+m.id+'\');return false" ontouchstart="mrowDown(\''+t.id+'\',\''+m.id+'\')" ontouchend="mrowUp()" ontouchmove="mrowUp()">'+
+  return '<div class="mrow'+(t.manage&&(m.home===t.manage||m.away===t.manage)?' managed':'')+'" onclick="mrowTap('+(m.status==='done'?1:0)+',\''+t.id+'\',\''+m.id+'\')" oncontextmenu="event.preventDefault();matchMenu(\''+t.id+'\',\''+m.id+'\');return false" ontouchstart="mrowDown(\''+t.id+'\',\''+m.id+'\')" ontouchend="mrowUp()" ontouchmove="mrowUp()">'+
     '<div class="side r"><span class="nm">'+esc(home.name)+'</span>'+tLogo(home)+'</div>'+
     '<div class="mid">'+mid+sim+'</div>'+
     '<div class="side"><span></span>'+tLogo(away)+'<span class="nm">'+esc(away.name)+leg+'</span></div></div>';
@@ -1566,6 +1570,31 @@ function rScorers(t){
       '<td><b>'+r.g+'</b> <span class="muted" style="font-size:9px">('+r.mp+')</span></td><td>'+r.a+'</td><td><b>'+(r.g+r.a)+'</b></td><td>'+(r.m||'')+'</td></tr>';
   });
   return h+'</table></div><div class="muted" style="text-align:center;margin-top:6px">★ — MVP матчей</div>';
+}
+function setManager(tid){
+  const t=tById(tid); if(!t) return;
+  let h='<h3>🎽 Твой клуб</h3><p class="muted" style="margin:2px 0 10px">Остальные матчи турнира будут симулироваться автоматически.</p><div class="pgrid">';
+  t.teams.slice().sort((a,b)=>b.rating-a.rating).forEach(tm=>{ h+='<button class="pbtn" onclick="doSetManager(\''+tid+'\',\''+tm.id+'\')">'+tLogo(tm)+'<span class="nm">'+esc(tm.name)+'</span></button>'; });
+  h+='</div><div class="btn wide" style="margin-top:8px" onclick="closeModal()">Отмена</div>';
+  showModal(h);
+}
+function doSetManager(tid,teamId){ const t=tById(tid); if(!t) return; t.manage=teamId; save(); closeModal(); toast('🎽 Ты управляешь: '+team(t,teamId).name); openT(tid); }
+function managerNext(tid){
+  const t=tById(tid); if(!t||!t.manage) return; const mt=t.manage; let guard=0;
+  while(guard<6000){
+    const mine=t.matches.find(m=>m.status!=='done' && (m.home===mt||m.away===mt));
+    if(mine){ save(); openMatch(t.id, mine.id); return; }
+    const other=t.matches.find(m=>m.status!=='done');
+    if(!other) break;
+    simulateMatch(t,other, other.status==='live'); guard++;
+  }
+  save(); render(); celebrate(t); checkAch();
+}
+function managerStart(){
+  const pool=DB.football.slice().sort((a,b)=>b.rating-a.rating).slice(0,16);
+  const cfg={ name:'Карьера менеджера', sport:'football', teamIds:pool.map(x=>x.id), format:'groups', numGroups:4, rounds:1, advance:2, twoLeg:true, seeding:'rating', matchMode:{type:'time',minutes:5} };
+  const t=createTournament(cfg, DB); S.tournaments.unshift(t); S.seq++; save();
+  setManager(t.id);
 }
 function simStageUI(tid,scope){
   const t=tById(tid);
