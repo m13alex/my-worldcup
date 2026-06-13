@@ -244,6 +244,13 @@ input[type=text]:focus{outline:none;border-color:var(--acc2);}
 .penflash.save{color:var(--acc2);text-shadow:0 0 16px rgba(34,211,238,.5);}
 .penflash.miss{color:var(--red);}
 .penhint{margin-top:12px;font-size:13px;color:var(--tx2);}
+.pbtn.off{opacity:.42;pointer-events:none;}
+.xi-pitch{position:relative;overflow:hidden;}
+.xi-pitch::before{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(16,185,129,.10),rgba(16,185,129,.02) 60%,transparent);pointer-events:none;}
+.xi-pitch::after{content:"";position:absolute;left:10%;right:10%;top:50%;height:1px;background:rgba(255,255,255,.06);}
+.xi{position:relative;z-index:1;}
+.xi-p .xi-pos{font-size:8px;font-weight:850;color:var(--acc2);letter-spacing:.5px;margin-bottom:1px;}
+.xi-cap{font-size:9px;font-weight:800;color:var(--tx3);text-transform:uppercase;letter-spacing:1.2px;text-align:center;margin:2px 0;}
 .award{display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--line2);}
 .award:last-child{border-bottom:none;}
 .award .ic{font-size:22px;width:28px;text-align:center;flex:none;}
@@ -560,23 +567,23 @@ function expGoals(t, ra, rb){
   return Math.max(0.25, Math.min(6, base*Math.pow(10, diff/120)));
 }
 /* Реалистичные веса результативности по амплуа (доли голов: НП ~55-65%, ПЗ ~25-30%, ЗЩ ~8-12%) */
-function pickScorer(t, team){
+function pickScorer(t, team, exclude){
   const W = t.sport==='hockey'
     ? {'НП':9,'ЗЩ':1.8,'ВР':0.01}
     : {'НП':12,'ПЗ':4.2,'ЗЩ':1.1,'ВР':0.02};
-  const ws=team.players.map(p=>(W[p.pos]||1)*skillOf(p));
+  const ws=team.players.map(p=>p.n===exclude?0:(W[p.pos]||1)*skillOf(p));
   const tot=ws.reduce((s,w)=>s+w,0);
   let r=Math.random()*tot;
   for(let i=0;i<team.players.length;i++){ r-=ws[i]; if(r<=0) return team.players[i]; }
   return team.players[team.players.length-1];
 }
-function pickAssist(t, team, scorer){
+function pickAssist(t, team, scorer, exclude){
   const noAssist = t.sport==='hockey'? 0.15 : 0.25;
   if(Math.random()<noAssist) return null;
   const W = t.sport==='hockey'
     ? {'НП':5,'ЗЩ':2.6,'ВР':0.05}
     : {'ПЗ':5,'НП':3,'ЗЩ':1.6,'ВР':0.1};
-  const cand=team.players.filter(p=>p.n!==scorer.n);
+  const cand=team.players.filter(p=>p.n!==scorer.n && p.n!==exclude);
   const ws=cand.map(p=>(W[p.pos]||1)*skillOf(p));
   const tot=ws.reduce((s,w)=>s+w,0);
   let r=Math.random()*tot;
@@ -584,8 +591,8 @@ function pickAssist(t, team, scorer){
   return null;
 }
 function pickCardPlayer(tm){ return tm.players[rnd(tm.players.length)].n; }
-function mkEvent(t, team, min, ot){
-  const sc=pickScorer(t,team), as=pickAssist(t,team,sc);
+function mkEvent(t, team, min, ot, exclude){
+  const sc=pickScorer(t,team,exclude), as=pickAssist(t,team,sc,exclude);
   const e={team:team.id, scorer:sc.n, assist:as?as.n:null, min:min};
   if(ot) e.ot=true;
   return e;
@@ -653,10 +660,10 @@ function simulateMatch(t, match, fromCurrent){
     else startMin=Math.min(V-1, match.virtMin||0);
     match.events.forEach(e=>{ if(e.min!=null && !e.ot && e.min>startMin) startMin=Math.min(e.min,V-1); });
   }
-  let addH=0, addA=0, redH=null, redA=null, ehM=1, eaM=1;
+  let addH=0, addA=0, redH=null, redA=null, redHpl=null, redApl=null, ehM=1, eaM=1;
   if(mm.type==='time' && !fromCurrent){
-    if(Math.random()<0.07){ redH=startMin+1+rnd(Math.max(1,V-startMin)); const f=Math.max(0,(V-redH)/V); ehM*=(1-0.45*f); eaM*=(1+0.30*f); }
-    if(Math.random()<0.07){ redA=startMin+1+rnd(Math.max(1,V-startMin)); const f=Math.max(0,(V-redA)/V); eaM*=(1-0.45*f); ehM*=(1+0.30*f); }
+    if(Math.random()<0.07){ redH=startMin+1+rnd(Math.max(1,V-startMin)); redHpl=pickCardPlayer(home); const f=Math.max(0,(V-redH)/V); ehM*=(1-0.45*f); eaM*=(1+0.30*f); }
+    if(Math.random()<0.07){ redA=startMin+1+rnd(Math.max(1,V-startMin)); redApl=pickCardPlayer(away); const f=Math.max(0,(V-redA)/V); eaM*=(1-0.45*f); ehM*=(1+0.30*f); }
   }
   if(mm.type==='goals'){
     let gh=gh0, ga=ga0; const N=mm.goals;
@@ -669,10 +676,10 @@ function simulateMatch(t, match, fromCurrent){
   const Vend=matchVend(t,match);
   const mins=sampleMinutes(addH+addA, startMin+1, Vend);
   const sides=shuffle([...Array(addH).fill('h'),...Array(addA).fill('a')]);
-  sides.forEach((s,i)=>{ match.events.push(mkEvent(t, s==='h'?home:away, mins[i])); });
+  sides.forEach((s,i)=>{ const mn=mins[i]; let ex=null; if(s==='h'&&redHpl!=null&&mn>=redH) ex=redHpl; if(s==='a'&&redApl!=null&&mn>=redA) ex=redApl; match.events.push(mkEvent(t, s==='h'?home:away, mn, false, ex)); });
   if(mm.type==='time'){
-    if(redH!=null) match.events.push({team:home.id,type:'rc',pl:pickCardPlayer(home),min:Math.min(redH,Vend)});
-    if(redA!=null) match.events.push({team:away.id,type:'rc',pl:pickCardPlayer(away),min:Math.min(redA,Vend)});
+    if(redH!=null) match.events.push({team:home.id,type:'rc',pl:redHpl,min:Math.min(redH,Vend)});
+    if(redA!=null) match.events.push({team:away.id,type:'rc',pl:redApl,min:Math.min(redA,Vend)});
     const yc=rnd(4);
     for(let k=0;k<yc;k++){ const cm=Math.random()<0.5?home:away; match.events.push({team:cm.id,type:'yc',pl:pickCardPlayer(cm),min:startMin+1+rnd(Math.max(1,V-startMin))}); }
     const nch=1+rnd(4);
@@ -686,7 +693,7 @@ function simulateMatch(t, match, fromCurrent){
         const w=Math.random()<eh/(eh+ea)?'h':'a';
         const team=w==='h'?home:away;
         if(w==='h')match.gh++; else match.ga++;
-        match.events.push(mkEvent(t, team, V+1+rnd(5), true));
+        match.events.push(mkEvent(t, team, V+1+rnd(5), true, w==='h'?redHpl:redApl));
         match.result='OT';
       } else {
         match.result='SO';
@@ -1220,14 +1227,19 @@ function awardsData(t){
     const diff=Math.abs(m.gh-m.ga);
     if(diff>0 && (!biggest||diff>biggest.diff)) biggest={diff,m};
   });
-  Object.values(map).forEach(r=>{ r.score=r.g*2+r.a+r.mvp*3+r.cs*1.5; });
-  return {map, list:Object.values(map), hatTricks, biggest};
+  const gp={}; t.teams.forEach(tm=>{ gp[tm.id]=t.matches.filter(m=>m.status==='done'&&(m.home===tm.id||m.away===tm.id)).length; });
+  Object.values(map).forEach(r=>{ r.score=r.g*2+r.a+r.mvp*3+r.cs*1.5; r.mp=gp[r.team]||0; });
+  return {map, list:Object.values(map), hatTricks, biggest, gp};
 }
 function bestEleven(t,d){
   const form = t.sport==='hockey'? {'ВР':1,'ЗЩ':2,'НП':3} : {'ВР':1,'ЗЩ':4,'ПЗ':3,'НП':3};
-  const byPos={}; d.list.forEach(r=>{ (byPos[r.pos]=byPos[r.pos]||[]).push(r); });
+  // полный пул всех игроков всех команд, очки из статистики (0 если нет)
+  const pool=[];
+  t.teams.forEach(tm=>tm.players.forEach(p=>{ const r=d.map[tm.id+'#'+p.n];
+    pool.push({team:tm.id,n:p.n,name:p.name,pos:p.pos, g:r?r.g:0,a:r?r.a:0,mvp:r?r.mvp:0,cs:r?r.cs:0,score:r?r.score:0}); }));
+  const byPos={}; pool.forEach(r=>{ (byPos[r.pos]=byPos[r.pos]||[]).push(r); });
   const out=[];
-  Object.entries(form).forEach(([pos,cnt])=>{
+  Object.keys(form).forEach(function(pos){ const cnt=form[pos];
     const arr=(byPos[pos]||[]).slice();
     if(pos==='ВР') arr.sort((a,b)=>b.cs-a.cs||b.score-a.score);
     else arr.sort((a,b)=>b.score-a.score||b.g-a.g);
@@ -1237,23 +1249,25 @@ function bestEleven(t,d){
 }
 function awardsHtml(t){
   const d=awardsData(t);
-  const boot=d.list.filter(r=>r.g>0).sort((a,b)=>b.g-a.g||b.a-a.a)[0];
+  const scs=d.list.filter(r=>r.g>0);
+  let boots=[];
+  if(scs.length){ const mg=Math.max.apply(null,scs.map(r=>r.g)); const top=scs.filter(r=>r.g===mg); const mm2=Math.min.apply(null,top.map(r=>r.mp)); boots=top.filter(r=>r.mp===mm2); }
   const mvp=tournamentMVP(t); const mvpR=mvp?d.map[mvp.team+'#'+mvp.n]:null;
   const gk=d.list.filter(r=>r.pos==='ВР'&&r.cs>0).sort((a,b)=>b.cs-a.cs)[0];
   function award(ic,ttl,r,extra){ if(!r) return ''; const tm=team(t,r.team); const p=tm.players.find(x=>x.n===r.n)||{n:r.n,name:r.name};
     return '<div class="award"><div class="ic">'+ic+'</div>'+ava(tm,p)+'<div class="grow"><div class="ttl">'+ttl+'</div><b>'+esc(r.name)+'</b> <span class="muted">· '+esc(tm.name)+'</span></div><div class="awx">'+extra+'</div></div>'; }
   let h='<h2>Награды турнира</h2><div class="card" style="padding:10px">';
   h+=award('👑','Лучший игрок', mvpR, mvpR?(mvpR.g+'+'+mvpR.a):'');
-  h+=award('⚽','Бомбардир', boot, boot?boot.g+' гол':'');
+  boots.forEach(function(b,i){ h+=award('⚽', boots.length>1?('Бомбардир · '+(i+1)+'/'+boots.length):'Бомбардир', b, b.g+' гол · '+b.mp+' матч.'); });
   h+=award('🧤','Вратарь', gk, gk?gk.cs+' 🔒':'');
   h+='</div>';
   const xi=bestEleven(t,d);
   if(xi.length){
-    const form = t.sport==='hockey'? ['ВР','ЗЩ','НП'] : ['ВР','ЗЩ','ПЗ','НП'];
-    h+='<h2>Символическая сборная</h2><div class="card"><div class="xi">';
-    form.forEach(pos=>{ const ps=xi.filter(p=>p.posSlot===pos); if(!ps.length) return;
-      h+='<div class="xi-row">'+ps.map(r=>{ const tm=team(t,r.team); const p=tm.players.find(x=>x.n===r.n)||{n:r.n,name:r.name};
-        return '<div class="xi-p">'+ava(tm,p)+'<div class="nm">'+esc(shortName(r.name))+'</div><div class="meta">'+esc(tm.name)+'</div></div>'; }).join('')+'</div>'; });
+    const lines = t.sport==='hockey'? [['НП','Нападение'],['ЗЩ','Защита'],['ВР','Вратарь']] : [['НП','Нападение'],['ПЗ','Полузащита'],['ЗЩ','Защита'],['ВР','Вратарь']];
+    h+='<h2>Символическая сборная</h2><div class="card xi-pitch"><div class="xi">';
+    lines.forEach(function(L){ const pos=L[0]; const ps=xi.filter(p=>p.posSlot===pos); if(!ps.length) return;
+      h+='<div class="xi-cap">'+L[1]+'</div><div class="xi-row">'+ps.map(r=>{ const tm=team(t,r.team); const p=tm.players.find(x=>x.n===r.n)||{n:r.n,name:r.name};
+        return '<div class="xi-p"><div class="xi-pos">'+r.posSlot+'</div>'+ava(tm,p)+'<div class="nm">'+esc(shortName(r.name))+'</div><div class="meta">'+esc(tm.name)+'</div></div>'; }).join('')+'</div>'; });
     h+='</div></div>';
   }
   const recs=[];
@@ -1360,16 +1374,17 @@ function rScorers(t){
   Object.keys(mvps).forEach(k=>{
     if(!sc.find(r=>r.team+'#'+r.n===k)){ const [team,n]=k.split('#'); sc.push({team,n:+n,g:0,a:0,m:mvps[k]}); }
   });
-  sc.sort((x,y)=> (y.g+y.a)-(x.g+x.a) || y.g-x.g || (y.m||0)-(x.m||0));
+  sc.forEach(r=>{ r.mp=t.matches.filter(m=>m.status==='done'&&(m.home===r.team||m.away===r.team)).length; });
+  sc.sort((x,y)=> (y.g-x.g) || (x.mp-y.mp) || (y.a-x.a) || ((y.m||0)-(x.m||0)));
   const list=sc.slice(0,40);
   if(!list.length) return '<div class="empty">Голов пока нет</div>';
-  let h='<div class="card" style="padding:6px 10px"><table><tr><th></th><th class="tname">Игрок</th><th>Г</th><th>А</th><th>О</th><th>★</th></tr>';
+  let h='<div class="card" style="padding:6px 10px"><table><tr><th></th><th class="tname">Игрок</th><th>Г&nbsp;(И)</th><th>А</th><th>О</th><th>★</th></tr>';
   list.forEach((r,i)=>{
     const tm=team(t,r.team);
     const p=tm.players.find(p=>p.n===r.n)||{n:r.n,name:'№'+r.n};
     h+='<tr><td class="muted">'+(i+1)+'</td><td class="tname"><span class="row" style="gap:7px">'+ava(tm,p)+
       '<span><b>'+esc(p.name)+'</b><div class="muted sclub" style="font-size:10px">'+tLogo(tm)+esc(tm.name)+'</div></span></span></td>'+
-      '<td>'+r.g+'</td><td>'+r.a+'</td><td><b>'+(r.g+r.a)+'</b></td><td>'+(r.m||'')+'</td></tr>';
+      '<td><b>'+r.g+'</b> <span class="muted" style="font-size:9px">('+r.mp+')</span></td><td>'+r.a+'</td><td><b>'+(r.g+r.a)+'</b></td><td>'+(r.m||'')+'</td></tr>';
   });
   return h+'</table></div><div class="muted" style="text-align:center;margin-top:6px">★ — MVP матчей</div>';
 }
@@ -1544,11 +1559,13 @@ function rLive(){
   return h;
 }
 function playersCol(t,teamId){
-  const tm=team(t,teamId);
+  const tm=team(t,teamId); const m=lvM();
+  const off=m?m.events.filter(e=>e.type==='rc'&&e.team===teamId).map(e=>e.pl):[];
   const order={'НП':0,'ПЗ':1,'ЗЩ':2,'ВР':3};
   const ps=tm.players.slice().sort((a,b)=>(order[a.pos]??4)-(order[b.pos]??4)||a.n-b.n);
-  return ps.map(p=>'<button class="pbtn" onclick="goal(\''+teamId+'\','+p.n+')">'+
-    ava(tm,p)+'<span class="num">'+p.n+'</span><span class="nm">'+esc(shortName(p.name))+'</span><span class="pos">'+p.pos+'</span></button>').join('');
+  return ps.map(p=>{ const so=off.includes(p.n);
+    return '<button class="pbtn'+(so?' off':'')+'" '+(so?'':'onclick="goal(\''+teamId+'\','+p.n+')"')+'>'+
+    ava(tm,p)+'<span class="num">'+p.n+'</span><span class="nm">'+esc(shortName(p.name))+(so?' 🟥':'')+'</span><span class="pos">'+p.pos+'</span></button>'; }).join('');
 }
 const GOAL_PHRASES=['Мощный удар под перекладину!','Вратарь был бессилен!','Разобрался с защитой и пробил!','Хладнокровная реализация!','Что за гол!','Точно в дальний угол!','Великолепная комбинация!','Пушка с разворота!','Добил после отскока!','На исполнении — выше класс!','Прострел и удар в касание!','Со штрафного — красавец!'];
 function commentaryFor(e){ return GOAL_PHRASES[hashStr('g'+(e.min||0)+'#'+(e.scorer||0))%GOAL_PHRASES.length]; }
@@ -1642,6 +1659,7 @@ function curMinute(){
 function goal(teamId, scorerN){
   const t=lvT(), m=lvM();
   if(m.status==='done'){ toast('Матч завершён'); return; }
+  if(scorerN!=null && m.events.some(e=>e.type==='rc'&&e.team===teamId&&e.pl===scorerN)){ toast('🟥 Игрок удалён'); return; }
   vibr(40);
   if(scorerN==null){ addGoal(teamId,null,null); return; }
   const tm=team(t,teamId);
@@ -1718,11 +1736,11 @@ const PEN_OFF=[0.11,0.06,0.11, 0.05,0.13,0.05, 0.03,0.02,0.03];
 const PEN_SAVE=[0.45,0.6,0.45, 0.7,0.72,0.7, 0.85,0.9,0.85];
 const PEN_KW=[3,2,3, 2.5,0.6,2.5, 3.5,1.2,3.5];
 function penKeeperPick(){ let tot=0; PEN_KW.forEach(w=>tot+=w); let r=Math.random()*tot; for(let i=0;i<9;i++){ r-=PEN_KW[i]; if(r<=0) return i; } return 8; }
-function penShooters(tm){ const o=tm.players.filter(p=>p.pos!=='ВР').sort((a,b)=>skillOf(b)-skillOf(a)); return o.length?o:tm.players.slice(); }
+function penShooters(tm,m){ const off=m?m.events.filter(e=>e.type==='rc'&&e.team===tm.id).map(e=>e.pl):[]; const o=tm.players.filter(p=>p.pos!=='ВР'&&!off.includes(p.n)).sort((a,b)=>skillOf(b)-skillOf(a)); return o.length?o:tm.players.filter(p=>!off.includes(p.n)); }
 function shootoutUI(){ const t=lvT(), m=lvM(); closeModal(); startShootout(t,m); }
 function startShootout(t,m){
   PEN={ t, m, htaken:0, ataken:0, hgoals:0, agoals:0, hlog:[], alog:[], busy:false, done:false,
-    hS:penShooters(team(t,m.home)), aS:penShooters(team(t,m.away)) };
+    hS:penShooters(team(t,m.home),m), aS:penShooters(team(t,m.away),m) };
   renderShootout();
 }
 function penNextKicker(){ return PEN.htaken===PEN.ataken? 'h':'a'; }
@@ -1806,8 +1824,9 @@ function penaltyUI(){
     '<div class="btn wide" style="margin-top:8px" onclick="closeModal()">Отмена</div>');
 }
 function pkTeam(teamId){
-  const t=lvT(), tm=team(t,teamId);
-  const sh=tm.players.filter(p=>p.pos!=='ВР').sort((a,b)=>skillOf(b)-skillOf(a));
+  const t=lvT(), tm=team(t,teamId), m=lvM();
+  const off=m?m.events.filter(e=>e.type==='rc'&&e.team===teamId).map(e=>e.pl):[];
+  const sh=tm.players.filter(p=>p.pos!=='ВР'&&!off.includes(p.n)).sort((a,b)=>skillOf(b)-skillOf(a));
   let h='<h3>Кто бьёт пенальти?</h3><div class="pgrid">'+
     sh.map(p=>'<button class="pbtn" onclick="pkShoot(\''+teamId+'\','+p.n+')">'+ava(tm,p)+'<span class="num">'+p.n+'</span><span class="nm">'+esc(shortName(p.name))+'</span></button>').join('')+
     '</div><div class="btn wide" style="margin-top:8px" onclick="penaltyUI()">‹ Назад</div>';
