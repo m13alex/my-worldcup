@@ -883,7 +883,7 @@ function fmtRes(m){ return m.result==='OT'?' ОТ': m.result==='SO'?' Б': m.res
 function vibr(ms){ try{ navigator.vibrate && navigator.vibrate(ms); }catch(e){} }
 function beep(){ try{ const ctx=new (window.AudioContext||window.webkitAudioContext)(); const o=ctx.createOscillator(),g=ctx.createGain();
   o.connect(g); g.connect(ctx.destination); o.frequency.value=880; g.gain.value=.25; o.start(); o.stop(ctx.currentTime+.5);}catch(e){} }
-function whistle(times){ try{ const ctx=new (window.AudioContext||window.webkitAudioContext)(); let t=ctx.currentTime; const n=times||1;
+function whistle(times){ if(!sndOn()) return; try{ const ctx=new (window.AudioContext||window.webkitAudioContext)(); let t=ctx.currentTime; const n=times||1;
   for(let i=0;i<n;i++){ const o=ctx.createOscillator(),g=ctx.createGain(),lfo=ctx.createOscillator(),lg=ctx.createGain();
     o.type='triangle'; o.frequency.value=3150; lfo.type='sine'; lfo.frequency.value=23; lg.gain.value=150; lfo.connect(lg); lg.connect(o.frequency);
     const dur=(n===1?0.5:0.28); g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(.3,t+.03); g.gain.setValueAtTime(.3,t+dur-.06); g.gain.linearRampToValueAtTime(0,t+dur);
@@ -990,8 +990,9 @@ function rHome(){
   const act=S.tournaments.filter(t=>t.status==='active');
   const fin=S.tournaments.filter(t=>t.status==='finished').sort((a,b)=>b.finishedAt-a.finishedAt);
   let h='<div class="hdr"><h1 class="grow">🏆 <span class="grad">My Worldcup</span></h1>'+
-    (fin.length?'<div class="btn small" onclick="go({name:\'hall\'})">🏅</div>':'')+
-    '<div class="btn small" onclick="doExport()">⬆ Бэкап</div><div class="btn small" onclick="doImport()">⬇</div></div>';
+    '<div class="btn small" onclick="toggleSound()">'+(sndOn()?'🔊':'🔇')+'</div>'+
+    '<div class="btn small" onclick="go({name:\'hall\'})">🏅</div>'+
+    '<div class="btn small" onclick="doExport()">⬆</div><div class="btn small" onclick="doImport()">⬇</div></div>';
   h+=quickStartHtml();
   if(!act.length&&!fin.length) h+='<div class="empty">Пока нет турниров.<br>Нажми кнопку ниже — и вперёд!</div>';
   if(act.length){ h+='<h2>Текущие</h2>'+act.map(tCard).join(''); }
@@ -1257,6 +1258,7 @@ function rTournament(){
   const sp=t.sport==='hockey'?'🏒':'⚽';
   let h='<div class="hdr"><div class="back" onclick="go({name:\'home\'})">‹</div>'+
     '<div class="grow"><b style="font-size:17px">'+sp+' '+esc(t.name)+'</b><div class="muted">'+matchModeLabel(t)+'</div></div></div>';
+  const _ps=predStats(t); if(_ps.n) h+='<div class="muted" style="text-align:center;margin:-2px 0 8px">🎯 Прогнозы: '+_ps.pts+' очк · '+_ps.c+'/'+_ps.n+'</div>';
   if(t.status==='finished'){
     const c=team(t,t.champion);
     const mvp=tournamentMVP(t);
@@ -1518,6 +1520,9 @@ function matchMenu(tid,mid){
     h+='<div class="btn primary wide" style="margin-bottom:8px" onclick="closeModal();matchInfo(\''+tid+'\',\''+mid+'\')">📊 Статистика матча</div>';
     if(canReset(t,m)) h+='<div class="btn danger wide" style="margin-bottom:8px" onclick="closeModal();resetMatch(\''+tid+'\',\''+mid+'\')">↺ Переиграть</div>';
   }
+  const _pr=(t.pred&&t.pred[mid]);
+  if(m.status!=='done'){ h+='<div class="lbl" style="margin:8px 0 6px">🎯 Прогноз</div><div class="row" style="margin-bottom:8px">'+['h','d','a'].map(function(o,i){ return '<div class="btn small grow'+(_pr===o?' blue':'')+'" onclick="setPred(\''+tid+'\',\''+mid+'\',\''+o+'\')">'+['П1','Х','П2'][i]+'</div>'; }).join('')+'</div>'; }
+  else if(_pr){ const okp=predOutcome(m)===_pr; h+='<div class="muted" style="margin:6px 0 8px">🎯 Прогноз '+(_pr==='h'?'П1':_pr==='d'?'Х':'П2')+' — '+(okp?'✅ верно':'❌ мимо')+'</div>'; }
   h+='<div class="btn wide" onclick="closeModal()">Отмена</div>';
   showModal(h);
 }
@@ -1584,7 +1589,7 @@ function doSimStage(tid,scope){
 function simRow(tid,mid){
   const t=tById(tid), m=t.matches.find(x=>x.id===mid);
   simulateMatch(t,m, m.status==='live');
-  save(); render();
+  save(); render(); checkAch();
   toast('⚡ '+team(t,m.home).name+' '+m.gh+':'+m.ga+fmtRes(m)+' '+team(t,m.away).name);
   celebrate(t);
 }
@@ -1697,6 +1702,7 @@ function celebrate(t){
     (t.runnerUp?'<p class="muted">В финале обыгран '+esc(team(t,t.runnerUp).name)+'</p>':'')+
     (mvp?'<p><span class="tag gold">MVP турнира</span> <b>'+esc(playerName(t,mvp.team,mvp.n))+'</b><br><span class="muted">'+esc(team(t,mvp.team).name)+'</span></p>':'')+
     '<div class="btn primary wide" onclick="closeModal();render()">Отлично!</div></div>');
+  checkAch();
 }
 
 /* ================= live match ================= */
@@ -1908,6 +1914,7 @@ function addGoal(teamId,scorerN,assistN,pen){
   if(m.otPending){ ev.ot=true; ev.min=V+1+rnd(t.sport==='hockey'?5:30); }
   m.events.push(ev);
   recountScore(m);
+  crowdRoar();
   save();
   if(m.otPending){ finishMatch('OT'); return; }
   refreshLiveScore(teamId===m.home?'sh':'sa');
@@ -2213,7 +2220,7 @@ function setMvp(teamId,n){
 function afterFinishNav(t,m){
   go({name:'t', id:t.id, tab: m.stage==='po'?'setka':(t.config.format==='league'?'obzor':'matchi')});
   toast('Матч записан');
-  celebrate(t);
+  celebrate(t); checkAch();
 }
 function simThis(){
   const t=lvT(), m=lvM();
@@ -2241,10 +2248,64 @@ function liveBack(){
 }
 
 /* ================= hall of fame ================= */
+function sndOn(){ return S.sound!==false; }
+function toggleSound(){ S.sound = !sndOn(); save(); render(); }
+function crowdRoar(){ if(!sndOn()) return; try{
+  const ctx=new (window.AudioContext||window.webkitAudioContext)();
+  const dur=1.3, sr=ctx.sampleRate, buf=ctx.createBuffer(1, Math.floor(sr*dur), sr), d=buf.getChannelData(0);
+  for(let i=0;i<d.length;i++){ d[i]=(Math.random()*2-1)*(0.6+0.4*Math.sin(i/4000)); }
+  const srcn=ctx.createBufferSource(); srcn.buffer=buf;
+  const bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=520; bp.Q.value=0.6;
+  const g=ctx.createGain(); const t0=ctx.currentTime;
+  g.gain.setValueAtTime(0,t0); g.gain.linearRampToValueAtTime(0.5,t0+0.22); g.gain.linearRampToValueAtTime(0.30,t0+0.7); g.gain.linearRampToValueAtTime(0,t0+dur);
+  srcn.connect(bp); bp.connect(g); g.connect(ctx.destination); srcn.start(); srcn.stop(t0+dur);
+}catch(e){} }
+function predOutcome(m){ return m.gh>m.ga?'h': m.gh<m.ga?'a':'d'; }
+function setPred(tid,mid,o){ const t=tById(tid); if(!t) return; const m=t.matches.find(x=>x.id===mid); if(!m||m.status==='done') return; t.pred=t.pred||{}; t.pred[mid]=o; save(); closeModal(); toast('🎯 Прогноз сохранён'); }
+function predStats(t){ let n=0,c=0; if(t.pred){ t.matches.forEach(m=>{ if(m.status==='done'&&t.pred[m.id]){ n++; if(predOutcome(m)===t.pred[m.id]) c++; } }); } return {n,c,pts:c*3}; }
+function totalGoals(s){ let g=0; (s.tournaments||[]).forEach(t=>t.matches.forEach(m=>{ if(m.status==='done') m.events.forEach(e=>{ if(!e.type&&e.scorer!=null) g++; }); })); return g; }
+const ACH=[
+ {id:'first',ic:'🥇',t:'Первый трофей',d:'Заверши первый турнир',f:s=>s.tournaments.some(t=>t.status==='finished')},
+ {id:'cup',ic:'⚔️',t:'Король кубков',d:'Выиграй турнир-плей-офф',f:s=>s.tournaments.some(t=>t.status==='finished'&&t.config.format==='cup')},
+ {id:'ten',ic:'🔟',t:'Ветеран',d:'Заверши 10 турниров',f:s=>s.tournaments.filter(t=>t.status==='finished').length>=10},
+ {id:'hat',ic:'🎩',t:'Хет-трик',d:'Игрок забил 3 в матче',f:s=>s.tournaments.some(t=>t.matches.some(m=>{ if(m.status!=='done')return false; const c={}; m.events.forEach(e=>{ if(!e.type&&e.scorer!=null){ const k=e.team+'#'+e.scorer; c[k]=(c[k]||0)+1; } }); return Object.values(c).some(v=>v>=3); }))},
+ {id:'rout',ic:'💥',t:'Разгром',d:'Победа в 5+ мячей',f:s=>s.tournaments.some(t=>t.matches.some(m=>m.status==='done'&&Math.abs(m.gh-m.ga)>=5))},
+ {id:'g100',ic:'⚽',t:'Сотня',d:'100 голов суммарно',f:s=>totalGoals(s)>=100},
+ {id:'pred',ic:'🎯',t:'Оракул',d:'30 очков прогнозов',f:s=>(s.tournaments||[]).reduce((a,t)=>a+predStats(t).pts,0)>=30},
+ {id:'both',ic:'🏒',t:'Универсал',d:'Выиграй футбол и хоккей',f:s=>s.tournaments.some(t=>t.status==='finished'&&t.sport==='football')&&s.tournaments.some(t=>t.status==='finished'&&t.sport==='hockey')}
+];
+function checkAch(){ S.ach=S.ach||{}; const got=[]; ACH.forEach(a=>{ if(!S.ach[a.id]){ try{ if(a.f(S)){ S.ach[a.id]=Date.now(); got.push(a); } }catch(e){} } }); if(got.length){ save(); got.forEach((a,i)=> setTimeout(()=>toast(a.ic+' Достижение: '+a.t), 500+i*1100)); } }
+function achievementsHtml(){ S.ach=S.ach||{};
+  let h='<h2>🏅 Достижения · '+Object.keys(S.ach).length+'/'+ACH.length+'</h2><div class="card">';
+  ACH.forEach(a=>{ const ok=!!S.ach[a.id];
+    h+='<div class="award" style="opacity:'+(ok?1:.45)+'"><div class="ic">'+a.ic+'</div><div class="grow"><div class="ttl">'+esc(a.t)+'</div><div class="muted" style="font-size:11px">'+esc(a.d)+'</div></div><div class="awx">'+(ok?'✅':'🔒')+'</div></div>'; });
+  return h+'</div>';
+}
+function globalRecords(){
+  const pl={}; const get=(tid,n,nm)=>{ const k=tid+'#'+n; if(!pl[k]) pl[k]={team:tid,n:n,name:nm,g:0,mvpM:0,xi:0}; return pl[k]; };
+  (S.tournaments||[]).forEach(t=>{
+    t.matches.forEach(m=>{ if(m.status!=='done')return;
+      m.events.forEach(e=>{ if(!e.type&&e.scorer!=null){ const r=get(e.team,e.scorer,playerName(t,e.team,e.scorer)); r.g++; } });
+      if(m.mvp){ const r=get(m.mvp.team,m.mvp.n,playerName(t,m.mvp.team,m.mvp.n)); r.mvpM++; } });
+    if(t.status==='finished'){ (t.bestXI||[]).forEach(x=>{ const r=get(x.team,x.n,playerName(t,x.team,x.n)); r.xi++; }); }
+  });
+  const arr=Object.values(pl);
+  return { scorers:arr.filter(r=>r.g>0).sort((a,b)=>b.g-a.g).slice(0,8), mvps:arr.filter(r=>r.mvpM>0).sort((a,b)=>b.mvpM-a.mvpM).slice(0,5) };
+}
+function globalRecordsHtml(){
+  const g=globalRecords(); let h='';
+  function tbl(rows,lbl,key){ if(!rows.length) return ''; let s='<div class="card" style="padding:6px 10px"><table><tr><th></th><th class="tname">'+lbl+'</th><th>'+(key==='g'?'Г':'N')+'</th></tr>';
+    rows.forEach((r,i)=>{ const tm=TEAM_INDEX[r.team]; s+='<tr onclick="openPlayer(\''+r.team+'\','+r.n+')" style="cursor:pointer"><td class="muted">'+(i+1)+'</td><td class="tname"><span class="row" style="gap:6px">'+(tm?tLogo(tm):'')+'<span>'+esc(r.name)+'</span></span></td><td><b>'+(key==='g'?r.g:r.mvpM)+'</b></td></tr>'; });
+    return s+'</table></div>'; }
+  if(g.scorers.length||g.mvps.length){ h+='<h2>📈 Рекорды всех турниров</h2>'+tbl(g.scorers,'⚽ Бомбардиры','g')+tbl(g.mvps,'⭐ MVP матчей','m'); }
+  return h;
+}
 function rHall(){
   const fin=S.tournaments.filter(t=>t.status==='finished').sort((a,b)=>b.finishedAt-a.finishedAt);
   let h='<div class="hdr"><div class="back" onclick="go({name:\'home\'})">‹</div><h1 class="grow" style="margin:0">🏅 Зал славы</h1></div>';
-  if(!fin.length) return h+'<div class="empty">Заверши первый турнир — и он попадёт сюда</div>';
+  h+=achievementsHtml();
+  if(!fin.length) return h+'<div class="empty">Заверши первый турнир — здесь появятся титулы и рекорды</div>';
+  h+=globalRecordsHtml();
   const cnt={};
   fin.forEach(t=>{ const c=team(t,t.champion); cnt[c.id]=cnt[c.id]||{tm:c,n:0}; cnt[c.id].n++; });
   const top=Object.values(cnt).sort((a,b)=>b.n-a.n);
@@ -2287,6 +2348,7 @@ function setupPWA(){
 }
 render();
 setupPWA();
+checkAch();
 setTimeout(cacheLogosBg, 1500);
 setTimeout(()=>{ try{ const ids=[...new Set(S.tournaments.flatMap(t=>(t.teams||[]).map(x=>x.id)))]; cachePhotosBg(ids); }catch(e){} }, 4000);
 </script>
