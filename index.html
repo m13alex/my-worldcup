@@ -1539,7 +1539,7 @@ function rLive(){
       '<div class="colhead">'+tLogo(away)+esc(away.name)+'</div>'+
       '<div class="pbtn" style="justify-content:center;color:var(--tx2)" onclick="goal(\''+m.away+'\',null)">+ гол без автора</div>'+
       playersCol(t,m.away)+'</div></div>';
-  h+='<div class="btn small wide" style="margin-top:10px" onclick="addCardUI()">🟨🟥 Добавить карточку</div>';
+  h+='<div class="row" style="margin-top:10px"><div class="btn small grow" onclick="penaltyUI()">🥅 Пенальти</div><div class="btn small grow" onclick="addCardUI()">🟨🟥 Карточка</div></div>';
   h+='<div style="height:10px"></div><div class="btn primary wide" onclick="tryFinish()">Завершить матч</div><div style="height:20px"></div>';
   return h;
 }
@@ -1565,13 +1565,14 @@ function eventLine(t,m,e,delIdx){
   }
   if(e.type==='chance'){
     const c=CHANCE_KINDS[e.kind||0];
-    return '<div class="fitem ev-chance">'+min+'<span class="ball">'+c.i+'</span>'+
-      '<span class="grow muted">'+lg+'<b style="color:var(--tx2)">'+esc(playerName(t,e.team,e.pl))+'</b> '+c.t+'</span>'+del+'</div>';
+    const ic=e.pen?'🥅':c.i, txt=e.pen?('пенальти '+(e.kind===1?'— сейв вратаря':'— мимо')):c.t;
+    return '<div class="fitem ev-chance">'+min+'<span class="ball">'+ic+'</span>'+
+      '<span class="grow muted">'+lg+'<b style="color:var(--tx2)">'+esc(playerName(t,e.team,e.pl))+'</b> '+txt+'</span>'+del+'</div>';
   }
   const p=e.scorer!=null? tm.players.find(x=>x.n===e.scorer):null;
   const avatar=p? ava(tm,p): tLogo(tm);
   return '<div class="fitem">'+min+avatar+'<span class="ball">'+(t.sport==='hockey'?'🏒':'⚽')+'</span>'+
-    '<span class="grow">'+lg+'<b>'+esc(p?p.name:'Гол')+'</b>'+(e.assist!=null?' <span class="muted">('+esc(playerName(t,e.team,e.assist))+')</span>':'')+
+    '<span class="grow">'+lg+'<b>'+esc(p?p.name:'Гол')+'</b>'+(e.pen?' <span class="muted">(пен.)</span>':'')+(e.assist!=null?' <span class="muted">('+esc(playerName(t,e.team,e.assist))+')</span>':'')+
     (e.scorer!=null?'<div class="commentary">'+esc(commentaryFor(e))+'</div>':'')+'</span>'+del+'</div>';
 }
 function feedHtml(t,m){
@@ -1657,12 +1658,13 @@ function goal(teamId, scorerN){
   h+='</div>';
   showModal(h);
 }
-function addGoal(teamId,scorerN,assistN){
+function addGoal(teamId,scorerN,assistN,pen){
   const t=lvT(), m=lvM(), V=virtLen(t);
   let min;
   if(t.config.matchMode.type==='time') min=curMinute();
   else { m.virtMin=Math.min(V, (m.virtMin||0)+3+rnd(14)); min=m.virtMin; }
   const ev={team:teamId, scorer:scorerN, assist:assistN, min:min};
+  if(pen) ev.pen=true;
   if(m.otPending){ ev.ot=true; ev.min=V+1+rnd(t.sport==='hockey'?5:30); }
   m.events.push(ev);
   recountScore(m);
@@ -1792,6 +1794,55 @@ function penFinish(side){
   closeModal();
   toast('🏆 '+wn+' — победа по '+(t.sport==='hockey'?'буллитам':'пенальти')+' '+sc);
   finishMatch(t.sport==='hockey'?'SO':'PEN');
+}
+let PK=null;
+function penaltyUI(){
+  const t=lvT(), m=lvM();
+  if(m.status==='done'){ toast('Матч завершён'); return; }
+  const home=team(t,m.home), away=team(t,m.away);
+  showModal('<h3>🥅 Пенальти</h3><p class="muted" style="margin:2px 0 10px">Кому назначен пенальти?</p>'+
+    '<div class="row"><div class="btn grow" onclick="pkTeam(\''+m.home+'\')">'+tLogo(home)+' '+esc(home.name)+'</div>'+
+    '<div class="btn grow" onclick="pkTeam(\''+m.away+'\')">'+tLogo(away)+' '+esc(away.name)+'</div></div>'+
+    '<div class="btn wide" style="margin-top:8px" onclick="closeModal()">Отмена</div>');
+}
+function pkTeam(teamId){
+  const t=lvT(), tm=team(t,teamId);
+  const sh=tm.players.filter(p=>p.pos!=='ВР').sort((a,b)=>skillOf(b)-skillOf(a));
+  let h='<h3>Кто бьёт пенальти?</h3><div class="pgrid">'+
+    sh.map(p=>'<button class="pbtn" onclick="pkShoot(\''+teamId+'\','+p.n+')">'+ava(tm,p)+'<span class="num">'+p.n+'</span><span class="nm">'+esc(shortName(p.name))+'</span></button>').join('')+
+    '</div><div class="btn wide" style="margin-top:8px" onclick="penaltyUI()">‹ Назад</div>';
+  showModal(h);
+}
+function pkShoot(teamId,n){ PK={teamId,n,busy:false}; renderPK(); }
+function renderPK(){
+  const t=lvT(), tm=team(t,PK.teamId), sh=tm.players.find(p=>p.n===PK.n);
+  let h='<div class="penwrap"><div class="pentitle">🥅 ПЕНАЛЬТИ</div>';
+  h+='<div class="penkicker">'+ava(tm,sh)+'<span class="evlogo">'+tLogo(tm)+'</span><b>'+esc(sh.name)+'</b></div>';
+  h+='<div class="goalframe"><div class="keeper" id="pk"></div><div class="zones">';
+  for(let z=0;z<9;z++) h+='<div class="zone'+(z===4?' panenka':'')+'" onclick="pkKick('+z+')">'+(z===4?'🪶':'')+'</div>';
+  h+='</div><div class="ball" id="pb"></div><div class="penflash" id="pf"></div></div>';
+  h+='<div class="penhint">Тапни, куда бить · угол · центр · паненка</div></div>';
+  showModal(h, ()=>{});
+}
+function pkKick(zone){
+  if(!PK||PK.busy) return; PK.busy=true;
+  const t=lvT(), m=lvM(), tm=team(t,PK.teamId), sh=tm.players.find(p=>p.n===PK.n);
+  const skv=(skillOf(sh)-0.65)/1.25, kz=penKeeperPick();
+  let res;
+  if(Math.random() < PEN_OFF[zone]*(1-0.4*skv)) res='miss';
+  else if(kz===zone && Math.random()<PEN_SAVE[zone]) res='save';
+  else res='goal';
+  const teamId=PK.teamId, n=PK.n;
+  penAnimate(zone,kz,res,function(){
+    closeModal(); PK=null;
+    if(res==='goal'){ addGoal(teamId,n,null,true); toast('⚽ ГОЛ с пенальти — '+esc(sh.name)); }
+    else {
+      const min=t.config.matchMode.type==='time'?curMinute():(m.virtMin||0);
+      m.events.push({team:teamId,type:'chance',pl:n,min:min,kind:res==='save'?1:2,pen:true});
+      save(); refreshLiveScore(); vibr(25);
+      toast(res==='save'?'🧤 Вратарь взял пенальти!':'❌ Мимо!');
+    }
+  });
 }
 function tryFinish(){
   const t=lvT(), m=lvM();
